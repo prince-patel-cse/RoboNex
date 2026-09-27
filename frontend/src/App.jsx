@@ -32,7 +32,9 @@ export default function App() {
           <Box size={24} color="#fff" />
         </div>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Connecting to Robonex-2 Simulation Server...</h2>
-        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Waiting for WebSocket telemetry on ws://localhost:5050</p>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+          Waiting for WebSocket telemetry on {import.meta.env.VITE_WS_URL || 'ws://localhost:5050'}
+        </p>
       </div>
     );
   }

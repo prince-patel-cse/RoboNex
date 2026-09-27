@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const WS_URL = "ws://localhost:5050";
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:5050";
 
 export function useSimulationSocket() {
   const [state, setState] = useState(null);
