@@ -22,6 +22,7 @@ export function useSimulationSocket() {
 
       ws.onmessage = (event) => {
         try {
+          console.log("WS MESSAGE:", event.data);
           const message = JSON.parse(event.data);
           if (message.type === "STATE_UPDATE") {
             setState(message.payload);
