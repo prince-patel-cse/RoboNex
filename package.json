@@ -1,0 +1,12 @@
+{
+  "name": "robonex-2",
+  "version": "1.0.0",
+  "description": "Decentralized Multi-Robot Warehouse System with Time-Aware A*, P2P Coordination, and Wait-For Cycle Deadlock Recovery",
+  "scripts": {
+    "start:backend": "npm --prefix backend start",
+    "start:frontend": "npm --prefix frontend run dev"
+  },
+  "keywords": ["amr", "warehouse", "robotics", "decentralized", "p2p", "astar", "deadlock-recovery"],
+  "author": "SIH Team",
+  "license": "ISC"
+}
