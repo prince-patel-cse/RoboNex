@@ -5,11 +5,12 @@ import { LandingPage } from './components/LandingPage';
 import { RobotsPage } from './components/RobotsPage';
 import { CommunicationPage } from './components/CommunicationPage';
 import { WarehouseGrid } from './components/WarehouseGrid';
+import { Warehouse3DGrid } from './components/Warehouse3DGrid';
 import { TaskManager } from './components/TaskManager';
 import { RobotFleet } from './components/RobotFleet';
 import { ConflictLog } from './components/ConflictLog';
 import { ControlBar } from './components/ControlBar';
-import { Box, HelpCircle } from 'lucide-react';
+import { Box, HelpCircle, Layers } from 'lucide-react';
 
 export default function App() {
   const {
@@ -29,6 +30,7 @@ export default function App() {
   // Navigation View: 'landing' | 'simulator' | 'robots' | 'communication'
   const [currentView, setCurrentView] = useState('landing');
   const [interactionMode, setInteractionMode] = useState('BLOCK'); // 'BLOCK' | 'ADD_ROBOT'
+  const [displayDimension, setDisplayDimension] = useState('2D'); // Default 2D grid matrix
   const [selectedRobotId, setSelectedRobotId] = useState(null);
 
   // Theme state: 'light' | 'dark'
@@ -112,61 +114,123 @@ export default function App() {
                 onReset={resetSimulation}
               />
 
-              {/* Grid Canvas Panel */}
-              <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>Warehouse Floor Visualizer</h3>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
-                      Autonomous AMRs navigate independently via Space-Time A* and negotiate reservations.
-                    </p>
+              {/* 3D / 2D Warehouse Floor Visualizer */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-subtle)', padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border-light)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    <Layers size={16} color="var(--brand-orange)" />
+                    <span>Visualizer Dimension:</span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 12, height: 12, background: 'var(--wall-bg)', borderRadius: 2 }} />
-                      Obstacle Wall
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 12, height: 12, background: 'var(--status-emerald-bg)', border: '1.5px dashed var(--status-emerald)', borderRadius: 2 }} />
-                      Pickup Point
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 12, height: 12, background: 'var(--status-blue-bg)', border: '1.5px dashed var(--status-blue)', borderRadius: 2 }} />
-                      Delivery Point
-                    </span>
+                  <div style={{ display: 'flex', background: 'var(--bg-card)', padding: 3, borderRadius: 8, border: '1px solid var(--border-light)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDisplayDimension('3D')}
+                      style={{
+                        padding: '5px 14px',
+                        borderRadius: 6,
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        background: displayDimension === '3D' ? 'var(--brand-orange)' : 'transparent',
+                        color: displayDimension === '3D' ? '#ffffff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      3D Large Simulation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDisplayDimension('2D')}
+                      style={{
+                        padding: '5px 14px',
+                        borderRadius: 6,
+                        border: 'none',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        background: displayDimension === '2D' ? 'var(--brand-orange)' : 'transparent',
+                        color: displayDimension === '2D' ? '#ffffff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      2D Grid Matrix
+                    </button>
                   </div>
                 </div>
 
-                <WarehouseGrid
-                  grid={state.grid}
-                  robots={state.robots}
-                  tasks={state.tasks}
-                  interactionMode={interactionMode}
-                  selectedRobotId={selectedRobotId}
-                  onSelectRobot={(rId) => setSelectedRobotId(rId)}
-                  onCellClick={(x, y) => {
-                    if (interactionMode === 'ADD_ROBOT') {
-                      addRobot({ x, y });
-                    } else {
-                      toggleBlockCell(x, y);
-                    }
-                  }}
-                />
+                {displayDimension === '3D' ? (
+                  <Warehouse3DGrid
+                    grid={state.grid}
+                    robots={state.robots}
+                    tasks={state.tasks}
+                    interactionMode={interactionMode}
+                    selectedRobotId={selectedRobotId}
+                    onSelectRobot={(rId) => setSelectedRobotId(rId)}
+                    onCellClick={(x, y) => {
+                      if (interactionMode === 'ADD_ROBOT') {
+                        addRobot({ x, y });
+                      } else {
+                        toggleBlockCell(x, y);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>Warehouse Floor Visualizer (2D)</h3>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
+                          Autonomous AMRs navigate independently via Space-Time A* and negotiate reservations.
+                        </p>
+                      </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'var(--bg-subtle)', padding: '10px 14px', borderRadius: 6, border: '1px solid var(--border-light)', fontWeight: 600 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <HelpCircle size={15} color="var(--brand-orange)" />
-                    <span>
-                      {interactionMode === 'ADD_ROBOT'
-                        ? 'Click any empty grid cell on the floor to deploy an autonomous AMR.'
-                        : 'Click any cell to toggle obstacles. Select a robot to inspect its Space-Time trajectory reservations.'}
-                    </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 12, height: 12, background: 'var(--wall-bg)', borderRadius: 2 }} />
+                          Obstacle Wall
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 12, height: 12, background: 'var(--status-emerald-bg)', border: '1.5px dashed var(--status-emerald)', borderRadius: 2 }} />
+                          Pickup Point
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 12, height: 12, background: 'var(--status-blue-bg)', border: '1.5px dashed var(--status-blue)', borderRadius: 2 }} />
+                          Delivery Point
+                        </span>
+                      </div>
+                    </div>
+
+                    <WarehouseGrid
+                      grid={state.grid}
+                      robots={state.robots}
+                      tasks={state.tasks}
+                      interactionMode={interactionMode}
+                      selectedRobotId={selectedRobotId}
+                      onSelectRobot={(rId) => setSelectedRobotId(rId)}
+                      onCellClick={(x, y) => {
+                        if (interactionMode === 'ADD_ROBOT') {
+                          addRobot({ x, y });
+                        } else {
+                          toggleBlockCell(x, y);
+                        }
+                      }}
+                    />
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'var(--bg-subtle)', padding: '10px 14px', borderRadius: 6, border: '1px solid var(--border-light)', fontWeight: 600 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <HelpCircle size={15} color="var(--brand-orange)" />
+                        <span>
+                          {interactionMode === 'ADD_ROBOT'
+                            ? 'Click any empty grid cell on the floor to deploy an autonomous AMR.'
+                            : 'Click any cell to toggle obstacles. Select a robot to inspect its Space-Time trajectory reservations.'}
+                        </span>
+                      </div>
+                      <span style={{ color: interactionMode === 'ADD_ROBOT' ? 'var(--brand-orange)' : 'var(--text-primary)', fontWeight: 800 }}>
+                        Mode: {interactionMode === 'ADD_ROBOT' ? 'DEPLOY ROBOT' : 'TOGGLE WALLS'}
+                      </span>
+                    </div>
                   </div>
-                  <span style={{ color: interactionMode === 'ADD_ROBOT' ? 'var(--brand-orange)' : 'var(--text-primary)', fontWeight: 800 }}>
-                    Mode: {interactionMode === 'ADD_ROBOT' ? 'DEPLOY ROBOT' : 'TOGGLE WALLS'}
-                  </span>
-                </div>
+                )}
               </div>
 
               {/* Bottom Telemetry Log */}
