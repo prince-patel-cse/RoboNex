@@ -10,6 +10,9 @@ import { TaskManager } from './components/TaskManager';
 import { RobotFleet } from './components/RobotFleet';
 import { ConflictLog } from './components/ConflictLog';
 import { ControlBar } from './components/ControlBar';
+import { P2PNetworkMap } from './components/P2PNetworkMap';
+import { ConflictAlert } from './components/ConflictAlert';
+import { CustomCursor } from './components/CustomCursor';
 import { Box, HelpCircle, Layers } from 'lucide-react';
 
 export default function App() {
@@ -52,6 +55,9 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', paddingTop: 68 }}>
+      {/* Brand Arrowhead Custom Cursor */}
+      <CustomCursor />
+
       {/* Floating Unique Navigation Dock */}
       <Navbar
         currentView={currentView}
@@ -204,6 +210,7 @@ export default function App() {
                       grid={state.grid}
                       robots={state.robots}
                       tasks={state.tasks}
+                      events={state.events}
                       interactionMode={interactionMode}
                       selectedRobotId={selectedRobotId}
                       onSelectRobot={(rId) => setSelectedRobotId(rId)}
@@ -255,7 +262,15 @@ export default function App() {
                 selectedRobotId={selectedRobotId}
                 onSelectRobot={(rId) => setSelectedRobotId(rId)}
               />
+
+              <P2PNetworkMap
+                robots={state.robots}
+                connected={connected}
+              />
             </div>
+
+            {/* Live Conflict & Negotiation Alert Overlay */}
+            <ConflictAlert events={state.events} robots={robotList} />
           </main>
         )
       )}

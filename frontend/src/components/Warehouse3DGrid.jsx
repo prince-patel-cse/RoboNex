@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { getRobotColor } from './WarehouseGrid';
 import { 
   Box, 
   RotateCcw, 
@@ -18,6 +22,71 @@ import {
   MousePointer
 } from 'lucide-react';
 
+/**
+ * Generates smooth curved trajectory points for visual path overlay on the floor.
+ * Safely adds gentle corner rounding inside walkable intersections.
+ */
+function generateCurvedTrajectoryPoints(pathCells, cellSize, halfWidth, halfHeight) {
+  if (!pathCells || pathCells.length === 0) return [];
+
+  const worldPoints = pathCells.map(c => ({
+    x: (c.x + 0.5) * cellSize - halfWidth,
+    z: (c.y + 0.5) * cellSize - halfHeight
+  }));
+
+  if (worldPoints.length <= 2) {
+    return worldPoints.map(p => new THREE.Vector3(p.x, 0.12, p.z));
+  }
+
+  const result = [];
+  const filletRadius = 0.35; // Safe inner radius within cell intersection
+  result.push(new THREE.Vector3(worldPoints[0].x, 0.12, worldPoints[0].z));
+
+  for (let i = 1; i < worldPoints.length - 1; i++) {
+    const prev = worldPoints[i - 1];
+    const curr = worldPoints[i];
+    const next = worldPoints[i + 1];
+
+    const vInX = curr.x - prev.x;
+    const vInZ = curr.z - prev.z;
+    const lenIn = Math.hypot(vInX, vInZ);
+
+    const vOutX = next.x - curr.x;
+    const vOutZ = next.z - curr.z;
+    const lenOut = Math.hypot(vOutX, vOutZ);
+
+    if (lenIn > 0.1 && lenOut > 0.1) {
+      const uInX = vInX / lenIn;
+      const uInZ = vInZ / lenIn;
+      const uOutX = vOutX / lenOut;
+      const uOutZ = vOutZ / lenOut;
+      const dot = uInX * uOutX + uInZ * uOutZ;
+
+      if (dot < 0.75) {
+        // Corner fillet
+        const pStart = { x: curr.x - uInX * filletRadius, z: curr.z - uInZ * filletRadius };
+        const pEnd = { x: curr.x + uOutX * filletRadius, z: curr.z + uOutZ * filletRadius };
+
+        result.push(new THREE.Vector3(pStart.x, 0.12, pStart.z));
+        for (let s = 1; s <= 2; s++) {
+          const u = s / 3;
+          const inv = 1 - u;
+          const bx = inv * inv * pStart.x + 2 * inv * u * curr.x + u * u * pEnd.x;
+          const bz = inv * inv * pStart.z + 2 * inv * u * curr.z + u * u * pEnd.z;
+          result.push(new THREE.Vector3(bx, 0.12, bz));
+        }
+        result.push(new THREE.Vector3(pEnd.x, 0.12, pEnd.z));
+        continue;
+      }
+    }
+    result.push(new THREE.Vector3(curr.x, 0.12, curr.z));
+  }
+
+  const last = worldPoints[worldPoints.length - 1];
+  result.push(new THREE.Vector3(last.x, 0.12, last.z));
+  return result;
+}
+
 export function Warehouse3DGrid({
   grid = { rows: 10, cols: 10, blockedCells: [] },
   robots = [],
@@ -28,7 +97,6 @@ export function Warehouse3DGrid({
   onCellClick = () => {}
 }) {
   const mountRef = useRef(null);
-  const [isThreeLoaded, setIsThreeLoaded] = useState(!!window.THREE);
   const [viewPreset, setViewPreset] = useState('ISOMETRIC'); // 'ISOMETRIC' | 'TOP' | 'FRONT'
   const [hoveredCellPos, setHoveredCellPos] = useState(null);
 
@@ -41,30 +109,27 @@ export function Warehouse3DGrid({
   const pathLinesRef = useRef([]);
   const hoverMeshRef = useRef(null);
   const animFrameRef = useRef(null);
+  const gltfTemplateRef = useRef(null);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const clockRef = useRef(new THREE.Clock());
 
   // Camera Damping & Rotational Inertia State
   const sphericalRef = useRef({ radius: 26, theta: Math.PI / 4, phi: Math.PI / 3.2 });
   const targetSphericalRef = useRef({ radius: 26, theta: Math.PI / 4, phi: Math.PI / 3.2 });
 
-  // Load Three.js dynamically if needed
+  // Load model.glb once for the entire simulation
   useEffect(() => {
-    if (window.THREE) {
-      setIsThreeLoaded(true);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-    script.async = true;
-    script.onload = () => setIsThreeLoaded(true);
-    document.head.appendChild(script);
+    const loader = new GLTFLoader();
+    loader.load('/model.glb', (gltf) => {
+      gltfTemplateRef.current = gltf;
+      setModelLoaded(true);
+    }, undefined, (err) => console.error('Failed to load /model.glb in simulation:', err));
   }, []);
 
   // Initialize Large-Scale High-Precision 3D Warehouse Simulation
   useEffect(() => {
-    if (!isThreeLoaded || !mountRef.current || !window.THREE) return;
+    if (!mountRef.current) return;
 
-    const THREE = window.THREE;
     const container = mountRef.current;
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -93,7 +158,7 @@ export function Warehouse3DGrid({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -430,20 +495,150 @@ export function Warehouse3DGrid({
       animFrameRef.current = requestAnimationFrame(animate);
 
       updateCamera();
+      const delta = clockRef.current.getDelta();
+      const dt = Math.min(delta, 0.05);
 
-      // Animate AMRs
+      // Animate AMRs with corridor-constrained smooth motion, curve slowdown, and synchronized wheels
       Object.values(robotMeshesRef.current).forEach(rData => {
+        if (rData.mixer) {
+          rData.mixer.update(delta);
+        }
+
         if (rData.lidar) rData.lidar.rotation.y += 0.12;
 
         if (rData.group && rData.targetPos) {
-          rData.group.position.x += (rData.targetPos.x - rData.group.position.x) * 0.18;
-          rData.group.position.z += (rData.targetPos.z - rData.group.position.z) * 0.18;
+          const dt = Math.min(delta, 0.05);
 
+          // Vector from 3D model position directly to current algorithm cell center
           const dx = rData.targetPos.x - rData.group.position.x;
           const dz = rData.targetPos.z - rData.group.position.z;
-          if (Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05) {
-            const targetAngle = Math.atan2(dx, dz);
-            rData.group.rotation.y += (targetAngle - rData.group.rotation.y) * 0.2;
+          const dist = Math.hypot(dx, dz);
+
+          // Detect upcoming turn at this cell from rData.nextStep (planned next step)
+          let isTurnAhead = false;
+          let turnAngle = 0;
+          let uOutX = 0;
+          let uOutZ = 0;
+
+          if (rData.nextStep && dist > 0.04) {
+            const nextX = (rData.nextStep.x + 0.5) * cellSize - halfWidth;
+            const nextZ = (rData.nextStep.y + 0.5) * cellSize - halfHeight;
+            const vNextX = nextX - rData.targetPos.x;
+            const vNextZ = nextZ - rData.targetPos.z;
+            const lenNext = Math.hypot(vNextX, vNextZ);
+            if (lenNext > 0.1) {
+              const uInX = dx / dist;
+              const uInZ = dz / dist;
+              uOutX = vNextX / lenNext;
+              uOutZ = vNextZ / lenNext;
+              const dot = uInX * uOutX + uInZ * uOutZ;
+              // If dot < 0.75, it's a corner turn (90 deg has dot ~ 0)
+              if (dot < 0.75) {
+                isTurnAhead = true;
+                turnAngle = Math.atan2(vNextX, vNextZ);
+              }
+            }
+          }
+
+          // DYNAMIC SPEED CONTROLLER:
+          // Straight cruising speed: ~3.4 m/s (covers 2.0m cell in ~0.59s, in lockstep with 600ms tick)
+          // Curve speed: ~1.4 m/s (~41% of cruising speed: slows down smoothly for curves!)
+          const cruiseSpeed = 3.4;
+          const curveSpeed = 1.4;
+
+          const isMoving = rData.status === 'MOVING' || dist > 0.04;
+          let targetSpeed = 0;
+
+          if (isMoving && dist > 0.03) {
+            if (isTurnAhead && dist < 0.95) {
+              // Smoothly slow down as we approach and enter the curve
+              targetSpeed = THREE.MathUtils.lerp(curveSpeed, cruiseSpeed, Math.max(0, (dist - 0.2) / 0.75));
+            } else {
+              targetSpeed = cruiseSpeed;
+            }
+          } else {
+            targetSpeed = 0;
+          }
+
+          // Smooth acceleration and deceleration
+          const accel = 6.5; // m/s^2
+          const decel = 9.0; // m/s^2
+          if (rData.currentSpeed === undefined) rData.currentSpeed = 0;
+          if (rData.currentSpeed < targetSpeed) {
+            rData.currentSpeed = Math.min(targetSpeed, rData.currentSpeed + accel * dt);
+          } else if (rData.currentSpeed > targetSpeed) {
+            rData.currentSpeed = Math.max(targetSpeed, rData.currentSpeed - decel * dt);
+          }
+
+          // HEADING CONTROL:
+          // By default, face the target cell.
+          // When in the turn zone (within 0.35m of intersection center), smoothly blend heading to turnAngle
+          let desiredHeading = rData.group.rotation.y;
+          if (dist > 0.03) {
+            desiredHeading = Math.atan2(dx, dz);
+          }
+          if (isTurnAhead && dist < 0.35) {
+            desiredHeading = turnAngle;
+          }
+
+          // Shortest-arc angular rotation (no 360 flip)
+          let angleDiff = desiredHeading - rData.group.rotation.y;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+          const rotRate = (isTurnAhead && dist < 0.35) ? 7.0 : 5.5; // rad/s
+          const rotStep = THREE.MathUtils.clamp(angleDiff, -rotRate * dt, rotRate * dt);
+          rData.group.rotation.y += rotStep;
+
+          // CORRIDOR-CONSTRAINED POSITION UPDATE (100% collision-free, strictly follows algorithm):
+          if (dist > 0.02 && rData.currentSpeed > 0.02) {
+            const stepDist = Math.min(dist, rData.currentSpeed * dt);
+            const uX = dx / dist;
+            const uZ = dz / dist;
+
+            // When inside the intersection cell (dist < 0.30m), apply subtle rounded corner curve:
+            let moveX = uX;
+            let moveZ = uZ;
+            if (isTurnAhead && dist < 0.30 && (uOutX !== 0 || uOutZ !== 0)) {
+              const curveProgress = (0.30 - dist) / 0.30;
+              moveX = THREE.MathUtils.lerp(uX, uOutX, curveProgress * 0.45);
+              moveZ = THREE.MathUtils.lerp(uZ, uOutZ, curveProgress * 0.45);
+              const mLen = Math.hypot(moveX, moveZ) || 1;
+              moveX /= mLen;
+              moveZ /= mLen;
+            }
+
+            rData.group.position.x += moveX * stepDist;
+            rData.group.position.z += moveZ * stepDist;
+
+            // Micro-suspension: subtle body lean into curve
+            if (rData.clonedModel) {
+              const targetRoll = THREE.MathUtils.clamp(-rotStep / dt * 0.012, -0.03, 0.03);
+              rData.clonedModel.rotation.z = THREE.MathUtils.lerp(rData.clonedModel.rotation.z, targetRoll, 0.15);
+            }
+          } else {
+            // Settle exactly at cell center
+            rData.group.position.x = rData.targetPos.x;
+            rData.group.position.z = rData.targetPos.z;
+            if (rData.clonedModel) {
+              rData.clonedModel.rotation.z = THREE.MathUtils.lerp(rData.clonedModel.rotation.z, 0, 0.2);
+            }
+          }
+
+          // Wheel Roll Animation synchronized with actual ground speed
+          if (rData.actions && rData.actions['wheel-roll']) {
+            const wheelAction = rData.actions['wheel-roll'];
+            if (rData.currentSpeed > 0.1) {
+              if (!wheelAction.isRunning()) {
+                wheelAction.setLoop(THREE.LoopRepeat).play();
+              }
+              // Scale timeScale directly with ground speed (slower in curves, faster on straights)
+              wheelAction.timeScale = THREE.MathUtils.clamp((rData.currentSpeed / cruiseSpeed) * 1.6, 0.4, 2.2);
+            } else {
+              if (wheelAction.isRunning()) {
+                wheelAction.stop();
+              }
+            }
           }
         }
       });
@@ -476,13 +671,16 @@ export function Warehouse3DGrid({
       domElem.removeEventListener('click', onClick);
       window.removeEventListener('resize', handleResize);
       if (container) container.innerHTML = '';
+      robotMeshesRef.current = {};
+      wallMeshesRef.current = {};
+      zoneMeshesRef.current = [];
+      pathLinesRef.current = [];
     };
-  }, [isThreeLoaded, grid.rows, grid.cols, viewPreset]);
+  }, [grid.rows, grid.cols, viewPreset]);
 
   // Sync Distinct Industrial Concrete & Metallic Barrier Blocks (Obstacle Walls)
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
+    if (!sceneRef.current) return;
     const scene = sceneRef.current;
 
     const rows = grid.rows || 10;
@@ -584,12 +782,11 @@ export function Warehouse3DGrid({
       scene.add(blockGroup);
       wallMeshesRef.current[key] = blockGroup;
     });
-  }, [grid.blockedCells, grid.rows, grid.cols, isThreeLoaded]);
+  }, [grid.blockedCells, grid.rows, grid.cols]);
 
   // Sync Roller Conveyor Pickup / Delivery Stations
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
+    if (!sceneRef.current) return;
     const scene = sceneRef.current;
 
     const rows = grid.rows || 10;
@@ -706,13 +903,13 @@ export function Warehouse3DGrid({
       scene.add(dGroup);
       zoneMeshesRef.current.push(dGroup);
     });
-  }, [tasks, grid.rows, grid.cols, isThreeLoaded]);
+  }, [tasks, grid.rows, grid.cols]);
 
-  // Sync Industrial AMRs & Trajectories
+  // Sync Industrial AMRs & Trajectories using model.glb
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
+    if (!sceneRef.current) return;
     const scene = sceneRef.current;
+    if (!gltfTemplateRef.current) return;
 
     const rows = grid.rows || 10;
     const cols = grid.cols || 10;
@@ -722,6 +919,7 @@ export function Warehouse3DGrid({
 
     const currentRobotIds = new Set((robots || []).map(r => r.id));
 
+    // Remove defunct robots
     Object.keys(robotMeshesRef.current).forEach(id => {
       if (!currentRobotIds.has(id)) {
         scene.remove(robotMeshesRef.current[id].group);
@@ -729,69 +927,138 @@ export function Warehouse3DGrid({
       }
     });
 
-    // Professional industrial AMR materials
-    const shellMat = new THREE.MeshStandardMaterial({ color: 0xe8e4de, roughness: 0.25, metalness: 0.12 }); // Off-white industrial shell
-    const chassisMat = new THREE.MeshStandardMaterial({ color: 0x3d3d3d, roughness: 0.35, metalness: 0.7 }); // Dark gunmetal chassis
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xc5c0b8, metalness: 0.6, roughness: 0.2 }); // Brushed aluminum deck
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.7, metalness: 0.3 }); // Dark rubber wheels
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     (robots || []).forEach(r => {
-      const targetX = (r.position.x + 0.5) * cellSize - halfWidth;
-      const targetZ = (r.position.y + 0.5) * cellSize - halfHeight;
+      const posX = (r.position && typeof r.position.x === 'number') ? r.position.x : 0;
+      const posY = (r.position && typeof r.position.y === 'number') ? r.position.y : 0;
+      const targetX = (posX + 0.5) * cellSize - halfWidth;
+      const targetZ = (posY + 0.5) * cellSize - halfHeight;
 
       if (!robotMeshesRef.current[r.id]) {
         const rGroup = new THREE.Group();
         rGroup.userData = { robotId: r.id };
 
-        // Main shell body
-        const shell = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.26, 0.85), shellMat);
-        shell.position.y = 0.15;
-        shell.castShadow = true;
+        // Clone model.glb using SkeletonUtils for independent animations
+        const clonedModel = SkeletonUtils.clone(gltfTemplateRef.current.scene);
+        clonedModel.scale.set(1.22, 1.22, 1.22);
+        clonedModel.position.set(0, 0, 0);
 
-        // Chassis base — gunmetal
-        const base = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.08, 0.8), chassisMat);
-        base.position.y = 0.04;
-        rGroup.add(base);
+        const robotColor = getRobotColor(r.id);
+        const statusColor = r.status === 'MOVING' ? 0xea580c :
+                            r.status === 'FAILED' ? 0xef4444 :
+                            r.status === 'WAITING' ? 0x3b82f6 : 0x10b981;
 
-        // 4 small wheels at corners
-        const wheelGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.04, 12);
-        const wheelPositions = [
-          [0.45, 0.06, 0.38], [-0.45, 0.06, 0.38],
-          [0.45, 0.06, -0.38], [-0.45, 0.06, -0.38]
-        ];
-        wheelPositions.forEach(([wx, wy, wz]) => {
-          const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-          wheel.rotation.x = Math.PI / 2;
-          wheel.position.set(wx, wy, wz);
-          rGroup.add(wheel);
+        let glowMat = null;
+
+        clonedModel.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+
+            if (child.material) {
+              const matName = child.material.name;
+              if (matName === 'orange') {
+                // Colored to match robot ID preset identity
+                child.material = new THREE.MeshStandardMaterial({
+                  color: new THREE.Color(robotColor.bg || '#ea580c'),
+                  metalness: 0.65,
+                  roughness: 0.35,
+                  emissive: new THREE.Color(robotColor.bg || '#ea580c'),
+                  emissiveIntensity: 0.16
+                });
+              } else if (matName === 'shell') {
+                // High-visibility sleek industrial metallic grey
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x9ca3af, // Bright visible metallic grey
+                  metalness: 0.65,
+                  roughness: 0.3
+                });
+              } else if (matName === 'glow') {
+                glowMat = new THREE.MeshStandardMaterial({
+                  color: statusColor,
+                  emissive: statusColor,
+                  emissiveIntensity: 2.2,
+                  roughness: 0.15
+                });
+                child.material = glowMat;
+              } else if (matName === 'steel') {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0xcfd8dc,
+                  metalness: 0.92,
+                  roughness: 0.18
+                });
+              } else if (matName === 'graphite') {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x475569,
+                  metalness: 0.6,
+                  roughness: 0.38
+                });
+              } else if (matName === 'rubber') {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x181a1d,
+                  metalness: 0.1,
+                  roughness: 0.85
+                });
+              }
+            }
+          }
         });
 
-        // Top deck — brushed aluminum payload platform
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.82), deckMat);
-        deck.position.y = 0.3;
-        deck.castShadow = true;
+        // Internal Cargo Bay Cavity (Space inside for the load)
+        const bayLinerMat = new THREE.MeshStandardMaterial({
+          color: 0x1f2937,
+          roughness: 0.6,
+          metalness: 0.7,
+          side: THREE.BackSide
+        });
+        const bayLiner = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.62), bayLinerMat);
+        bayLiner.position.set(0, 0.45, 0.02);
+        clonedModel.add(bayLiner);
 
-        // Status LED strip — muted professional tones
-        const statusColor = r.status === 'MOVING' ? 0xd4830a : r.status === 'FAILED' ? 0xc0392b : 0x27ae60;
-        const ledBand = new THREE.Mesh(
-          new THREE.BoxGeometry(1.22, 0.025, 0.87),
-          new THREE.MeshBasicMaterial({ color: statusColor })
+        // Internal Cavity LED Light
+        const bayLight = new THREE.PointLight(0xffedd5, 1.4, 1.4);
+        bayLight.position.set(0, 0.55, 0.02);
+        clonedModel.add(bayLight);
+
+        // Cargo box for pickup and drop animation
+        const cargoGroup = new THREE.Group();
+        cargoGroup.position.set(0, 0.38, 0.02);
+
+        const cargoBox = new THREE.Mesh(
+          new THREE.BoxGeometry(0.38, 0.28, 0.42),
+          new THREE.MeshStandardMaterial({ color: 0xc27803, roughness: 0.75, metalness: 0.06 })
         );
-        ledBand.position.y = 0.23;
+        cargoBox.castShadow = true;
+        cargoBox.receiveShadow = true;
+        cargoGroup.add(cargoBox);
 
-        // Lidar sensor — dark industrial housing
-        const lidar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.08, 0.12, 16),
-          new THREE.MeshStandardMaterial({ color: 0x2c3e50, metalness: 0.85, roughness: 0.15 })
+        // Security tape
+        const tapeMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.385, 0.05, 0.425),
+          new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.35 })
         );
-        lidar.position.set(0.48, 0.15, 0.32);
+        cargoGroup.add(tapeMesh);
 
-        rGroup.add(shell, deck, ledBand, lidar);
+        cargoGroup.visible = (r.stage === 'TO_DELIVERY' || r.status === 'DELIVERING');
+        clonedModel.add(cargoGroup);
 
-        // Selection ring — clean cyan for visibility on light floor
+        // Add cloned AMR model into the robot group
+        rGroup.add(clonedModel);
+
+        // Initialize Animation Mixer and Action clips for this robot
+        const mixer = new THREE.AnimationMixer(clonedModel);
+        const actions = {};
+        if (gltfTemplateRef.current.animations) {
+          gltfTemplateRef.current.animations.forEach(clip => {
+            actions[clip.name] = mixer.clipAction(clip);
+          });
+        }
+
+        // Selection ring
         const selectRing = new THREE.Mesh(
-          new THREE.RingGeometry(0.8, 0.9, 32),
-          new THREE.MeshBasicMaterial({ color: 0x2980b9, side: THREE.DoubleSide })
+          new THREE.RingGeometry(0.75, 0.95, 32),
+          new THREE.MeshBasicMaterial({ color: 0xc2410c, side: THREE.DoubleSide })
         );
         selectRing.rotation.x = -Math.PI / 2;
         selectRing.position.y = 0.02;
@@ -799,23 +1066,131 @@ export function Warehouse3DGrid({
         selectRing.visible = selectedRobotId === r.id;
         rGroup.add(selectRing);
 
+        // Generate curved waypoints from current cell and remaining path
+        let initialHeading = 0;
+        if (r.path && r.path[0]) {
+          const nextTargetX = (r.path[0].x + 0.5) * cellSize - halfWidth;
+          const nextTargetZ = (r.path[0].y + 0.5) * cellSize - halfHeight;
+          const initDx = nextTargetX - targetX;
+          const initDz = nextTargetZ - targetZ;
+          if (Math.hypot(initDx, initDz) > 0.05) {
+            initialHeading = Math.atan2(initDx, initDz);
+          }
+        }
+        rGroup.rotation.y = initialHeading;
         rGroup.position.set(targetX, 0, targetZ);
         scene.add(rGroup);
 
         robotMeshesRef.current[r.id] = {
           group: rGroup,
-          lidar: lidar,
-          ledBand: ledBand,
+          clonedModel: clonedModel,
+          mixer: mixer,
+          actions: actions,
+          glowMat: glowMat,
+          cargoMesh: cargoGroup,
           selectRing: selectRing,
-          targetPos: { x: targetX, z: targetZ }
+          targetPos: { x: targetX, z: targetZ },
+          nextStep: (r.path && r.path[0]) ? { x: r.path[0].x, y: r.path[0].y } : null,
+          currentSpeed: 0,
+          prevStage: r.stage,
+          prevStatus: r.status,
+          status: r.status,
+          isAnimatingCargo: false
         };
       } else {
         const rData = robotMeshesRef.current[r.id];
         rData.targetPos = { x: targetX, z: targetZ };
-
-        const statusColor = r.status === 'MOVING' ? 0xd4830a : r.status === 'FAILED' ? 0xc0392b : 0x27ae60;
-        rData.ledBand.material.color.setHex(statusColor);
+        rData.nextStep = (r.path && r.path[0]) ? { x: r.path[0].x, y: r.path[0].y } : null;
+        rData.status = r.status;
         rData.selectRing.visible = selectedRobotId === r.id;
+
+        const statusColor = r.status === 'MOVING' ? 0xea580c :
+                            r.status === 'FAILED' ? 0xef4444 :
+                            r.status === 'WAITING' ? 0x3b82f6 : 0x10b981;
+        if (rData.glowMat) {
+          rData.glowMat.color.setHex(statusColor);
+          rData.glowMat.emissive.setHex(statusColor);
+        }
+
+        // Pickup Animation Sequence (things in)
+        if ((r.status === 'PICKING_UP' || (rData.prevStage === 'TO_PICKUP' && r.stage === 'TO_DELIVERY')) && !rData.isAnimatingCargo) {
+          rData.isAnimatingCargo = true;
+          if (rData.actions['hatch-open']) {
+            if (rData.actions['hatch-close']) rData.actions['hatch-close'].stop();
+            rData.actions['hatch-open'].reset().setLoop(THREE.LoopOnce).play();
+          }
+          if (rData.actions['door-open']) {
+            if (rData.actions['door-close']) rData.actions['door-close'].stop();
+            rData.actions['door-open'].reset().setLoop(THREE.LoopOnce).play();
+          }
+
+          rData.cargoMesh.visible = true;
+          rData.cargoMesh.position.set(0, 0.85, 0.45); // Coming into hatch
+          let stepCount = 0;
+          const animIn = setInterval(() => {
+            stepCount++;
+            if (rData.cargoMesh) {
+              rData.cargoMesh.position.y -= 0.045;
+              rData.cargoMesh.position.z -= 0.042;
+            }
+            if (stepCount >= 11) {
+              clearInterval(animIn);
+              if (rData.cargoMesh) rData.cargoMesh.position.set(0, 0.38, 0.02);
+              if (rData.actions['hatch-close']) {
+                if (rData.actions['hatch-open']) rData.actions['hatch-open'].stop();
+                rData.actions['hatch-close'].reset().setLoop(THREE.LoopOnce).play();
+              }
+              if (rData.actions['door-close']) {
+                if (rData.actions['door-open']) rData.actions['door-open'].stop();
+                rData.actions['door-close'].reset().setLoop(THREE.LoopOnce).play();
+              }
+              rData.isAnimatingCargo = false;
+            }
+          }, 45);
+        }
+
+        // Drop / Delivery Animation Sequence (things out)
+        else if ((r.status === 'DELIVERING' || (rData.prevStage === 'TO_DELIVERY' && !r.stage)) && !rData.isAnimatingCargo) {
+          rData.isAnimatingCargo = true;
+          if (rData.actions['door-open']) {
+            if (rData.actions['door-close']) rData.actions['door-close'].stop();
+            rData.actions['door-open'].reset().setLoop(THREE.LoopOnce).play();
+          }
+          if (rData.actions['hatch-open']) {
+            if (rData.actions['hatch-close']) rData.actions['hatch-close'].stop();
+            rData.actions['hatch-open'].reset().setLoop(THREE.LoopOnce).play();
+          }
+
+          let stepCount = 0;
+          const animOut = setInterval(() => {
+            stepCount++;
+            if (rData.cargoMesh) {
+              rData.cargoMesh.position.z += 0.05;
+              rData.cargoMesh.position.y -= 0.02;
+            }
+            if (stepCount >= 11) {
+              clearInterval(animOut);
+              if (rData.cargoMesh) {
+                rData.cargoMesh.visible = false;
+                rData.cargoMesh.position.set(0, 0.38, 0.02);
+              }
+              if (rData.actions['door-close']) {
+                if (rData.actions['door-open']) rData.actions['door-open'].stop();
+                rData.actions['door-close'].reset().setLoop(THREE.LoopOnce).play();
+              }
+              if (rData.actions['hatch-close']) {
+                if (rData.actions['hatch-open']) rData.actions['hatch-open'].stop();
+                rData.actions['hatch-close'].reset().setLoop(THREE.LoopOnce).play();
+              }
+              rData.isAnimatingCargo = false;
+            }
+          }, 45);
+        } else if (!rData.isAnimatingCargo) {
+          rData.cargoMesh.visible = (r.stage === 'TO_DELIVERY' || r.status === 'DELIVERING');
+        }
+
+        rData.prevStage = r.stage;
+        rData.prevStatus = r.status;
       }
     });
 
@@ -825,20 +1200,20 @@ export function Warehouse3DGrid({
     if (selectedRobotId) {
       const selRobot = (robots || []).find(r => r.id === selectedRobotId);
       if (selRobot && selRobot.path && selRobot.path.length > 0) {
-        const points = selRobot.path.map(pt => new THREE.Vector3(
-          (pt.x + 0.5) * cellSize - halfWidth,
-          0.38,
-          (pt.y + 0.5) * cellSize - halfHeight
-        ));
+        const pathCells = [
+          { x: selRobot.position.x, y: selRobot.position.y },
+          ...selRobot.path
+        ];
+        const points = generateCurvedTrajectoryPoints(pathCells, cellSize, halfWidth, halfHeight);
 
         const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x2980b9, linewidth: 4 });
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xea580c, linewidth: 3 });
         const lineMesh = new THREE.Line(lineGeo, lineMat);
         scene.add(lineMesh);
         pathLinesRef.current.push(lineMesh);
       }
     }
-  }, [robots, selectedRobotId, grid.rows, grid.cols, isThreeLoaded]);
+  }, [robots, selectedRobotId, grid.rows, grid.cols, modelLoaded]);
 
   return (
     <div className="glass-panel" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>

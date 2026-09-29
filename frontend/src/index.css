@@ -96,17 +96,18 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Professional Classic Panels (No glassy blue filters) */
+/* Professional Classic Panels */
 .glass-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 2px 8px -2px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.25s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .glass-panel:hover {
   border-color: var(--border-strong);
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0,0,0,0.06);
 }
 
 /* Header Navbar */
@@ -310,27 +311,32 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 9px 16px;
-  border-radius: 6px;
+  padding: 9px 18px;
+  border-radius: 7px;
   font-weight: 700;
   font-size: 0.82rem;
   font-family: var(--font-sans);
   cursor: pointer;
   border: none;
-  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  letter-spacing: 0.01em;
+  transition: background-color 0.18s ease, transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease, opacity 0.15s ease;
 }
 
-/* Primary Action Button (Rich Dark Industrial Orange) */
+.btn:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/* Primary Action Button */
 .btn-primary {
   background: var(--brand-orange);
   color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(194, 65, 12, 0.35), 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .btn-primary:hover {
   background: var(--brand-orange-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(194, 65, 12, 0.4), 0 2px 4px rgba(0,0,0,0.2);
 }
 
 /* Secondary / Dark Button (Pure Black in Light Mode / Crisp White in Dark Mode) */
@@ -390,26 +396,35 @@ input:focus, select:focus {
 .stat-pill {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: 8px;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-light);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.stat-pill:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .stat-val {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 800;
   font-family: var(--font-mono);
   color: var(--text-primary);
+  line-height: 1;
 }
 
 .stat-label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   font-weight: 700;
+  margin-top: 2px;
 }
 
 /* Badges */
@@ -417,12 +432,13 @@ input:focus, select:focus {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  transition: opacity 0.2s ease;
 }
 
 .badge-idle { background: var(--bg-subtle); color: var(--text-secondary); border: 1px solid var(--border-strong); }
@@ -433,18 +449,18 @@ input:focus, select:focus {
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-main);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 3px;
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--brand-orange);
 }
 
 /* P2P Communication Wave Animations */
@@ -461,3 +477,276 @@ input:focus, select:focus {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.18); opacity: 0.65; }
 }
+
+/* Connection status dot pulse */
+@keyframes connectionPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+
+.dot-connected {
+  animation: connectionPulse 2.2s infinite ease-in-out;
+}
+
+/* Fade-in slide-up for panels */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.anim-fade-in {
+  animation: fadeSlideUp 0.35s ease both;
+}
+
+/* Shimmer skeleton loader */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* Section header accent bar */
+.section-accent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 4px;
+}
+
+.section-accent h3, .section-accent h4 {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+/* Tooltip */
+.tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip-wrapper:hover .tooltip-label {
+  opacity: 1;
+  transform: translateY(-2px);
+  pointer-events: auto;
+}
+
+.tooltip-label {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--brand-black);
+  color: var(--text-inverted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 9999;
+}
+
+/* =====================================================
+   ROBOT SELECTION — Pulsing sonar ring
+   ===================================================== */
+@keyframes robotSelectedPulse {
+  0%   { box-shadow: 0 0 0 0px rgba(194, 65, 12, 0.7), 0 0 0 0px rgba(194, 65, 12, 0.3); }
+  50%  { box-shadow: 0 0 0 6px rgba(194, 65, 12, 0.2), 0 0 0 12px rgba(194, 65, 12, 0.05); }
+  100% { box-shadow: 0 0 0 0px rgba(194, 65, 12, 0.0), 0 0 0 0px rgba(194, 65, 12, 0.0); }
+}
+
+.robot-marker.selected-active {
+  animation: robotSelectedPulse 1.6s infinite ease-out;
+  border: 2.5px solid var(--brand-orange) !important;
+  transform: scale(1.2) !important;
+  z-index: 20;
+}
+
+/* =====================================================
+   BATTERY BAR
+   ===================================================== */
+.battery-bar {
+  width: 100%;
+  height: 5px;
+  background: var(--border-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.battery-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 700ms ease, background-color 400ms ease;
+}
+
+/* =====================================================
+   PICKUP / DELIVERY CELL — Pulsing border
+   ===================================================== */
+@keyframes pickupPulse {
+  0%, 100% { border-color: var(--status-emerald); opacity: 1; }
+  50% { border-color: rgba(4,120,87,0.3); opacity: 0.85; }
+}
+@keyframes deliveryPulse {
+  0%, 100% { border-color: var(--status-blue); opacity: 1; }
+  50% { border-color: rgba(29,78,216,0.3); opacity: 0.85; }
+}
+
+.cell.pickup-point {
+  animation: pickupPulse 2s infinite ease-in-out;
+}
+.cell.delivery-point {
+  animation: deliveryPulse 2s infinite ease-in-out;
+}
+
+/* =====================================================
+   PATH DIRECTION ARROW
+   ===================================================== */
+.path-arrow {
+  position: absolute;
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+/* =====================================================
+   REROUTING BADGE — flashing badge on robot cell
+   ===================================================== */
+@keyframes reroutingFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.rerouting-badge {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: var(--brand-orange);
+  color: #fff;
+  font-size: 0.45rem;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  animation: reroutingFlash 0.8s infinite ease-in-out;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* =====================================================
+   CONFLICT ALERT — slide-in overlay card
+   ===================================================== */
+@keyframes conflictSlideIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0%);   opacity: 1; }
+}
+
+@keyframes conflictSlideOut {
+  from { transform: translateX(0%);   opacity: 1; }
+  to   { transform: translateX(120%); opacity: 0; }
+}
+
+.conflict-alert-enter { animation: conflictSlideIn 0.35s cubic-bezier(0.22,1,0.36,1) both; }
+.conflict-alert-exit  { animation: conflictSlideOut 0.3s ease both; }
+
+@keyframes conflictProgressShrink {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* =====================================================
+   TASK COMPLETED — single green flash on row
+   ===================================================== */
+@keyframes taskCompleteFlash {
+  0%   { background: var(--status-emerald-bg); }
+  60%  { background: var(--status-emerald-bg); }
+  100% { background: var(--bg-subtle); }
+}
+.task-completed-flash {
+  animation: taskCompleteFlash 1.5s ease both;
+}
+
+/* =====================================================
+   ROBOT CARD — selected left-accent
+   ===================================================== */
+.robot-card-selected {
+  border-left: 3px solid var(--brand-orange) !important;
+  background: var(--brand-orange-light) !important;
+}
+
+/* =====================================================
+   P2P NETWORK MAP
+   ===================================================== */
+.p2p-map-panel {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p2p-node {
+  transition: filter 0.3s ease;
+}
+.p2p-node:hover {
+  filter: brightness(1.2);
+}
+
+/* =====================================================
+   ROBOT MARKER — smooth transitions
+   ===================================================== */
+.robot-marker {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  z-index: 10;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease, border-color 0.2s ease;
+  position: relative;
+}
+
+.robot-marker.moving {
+  animation: pulse-robot 1.4s infinite;
+}
+
+/* =====================================================
+   BRAND HARDWARE CURSOR — 0ms Latency, Zero Delay, No Shadow
+   ===================================================== */
+:root {
+  --cursor-brand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cpath d='M 3 3 L 21 18 Q 12 16.5 4 23.5 Z' fill='%23c2410c' stroke='%23ffffff' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+  --cursor-brand-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cpath d='M 3 3 L 19 16.5 Q 11 15 4 22 Z' fill='%239a3412' stroke='%23ffffff' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] {
+  --cursor-brand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cpath d='M 3 3 L 21 18 Q 12 16.5 4 23.5 Z' fill='%23ea580c' stroke='%23ffffff' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+  --cursor-brand-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cpath d='M 3 3 L 19 16.5 Q 11 15 4 22 Z' fill='%23c2410c' stroke='%23ffffff' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+@media (pointer: fine) {
+  html, body, *, *::before, *::after {
+    cursor: var(--cursor-brand) 3 3, auto !important;
+  }
+
+  html:active, body:active, *:active {
+    cursor: var(--cursor-brand-active) 3 3, auto !important;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+

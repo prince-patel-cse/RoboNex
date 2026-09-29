@@ -29,7 +29,20 @@ export function ControlBar({
   };
 
   return (
-    <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="glass-panel anim-fade-in" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Control Section Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottom: '1px solid var(--border-light)' }}>
+        <div style={{ 
+          width: 8, height: 8, borderRadius: '50%', 
+          background: isRunning ? 'var(--status-emerald)' : 'var(--status-rose)',
+          boxShadow: isRunning ? '0 0 8px rgba(4,120,87,0.5)' : 'none',
+          transition: 'background 0.3s ease, box-shadow 0.3s ease'
+        }} />
+        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Simulation Engine — <span style={{ color: isRunning ? 'var(--status-emerald)' : 'var(--status-rose)' }}>{isRunning ? 'RUNNING' : 'PAUSED'}</span>
+        </span>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         
         {/* Controls Group */}

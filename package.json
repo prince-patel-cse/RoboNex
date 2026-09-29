@@ -6,7 +6,20 @@
     "start:backend": "npm --prefix backend start",
     "start:frontend": "npm --prefix frontend run dev"
   },
-  "keywords": ["amr", "warehouse", "robotics", "decentralized", "p2p", "astar", "deadlock-recovery"],
+  "keywords": [
+    "amr",
+    "warehouse",
+    "robotics",
+    "decentralized",
+    "p2p",
+    "astar",
+    "deadlock-recovery"
+  ],
   "author": "SIH Team",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "three": "^0.186.1"
+  }
 }
