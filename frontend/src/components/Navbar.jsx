@@ -181,6 +181,40 @@ export function Navbar({ currentView, setCurrentView, theme, toggleTheme, robotC
               </span>
             )}
           </button>
+
+          {/* Communication Layer / P2P Protocol Tab */}
+          <button
+            type="button"
+            onClick={() => setCurrentView('communication')}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: 'none',
+              fontSize: '0.84rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease',
+              background: currentView === 'communication' ? 'var(--brand-orange)' : 'transparent',
+              color: currentView === 'communication' ? '#ffffff' : 'var(--text-secondary)',
+              boxShadow: currentView === 'communication' ? '0 2px 8px rgba(234, 88, 12, 0.3)' : 'none'
+            }}
+          >
+            <Radio size={16} />
+            <span>P2P Protocol</span>
+            <span style={{ 
+              fontSize: '0.62rem', 
+              padding: '1px 5px', 
+              borderRadius: 4, 
+              background: currentView === 'communication' ? 'rgba(255,255,255,0.25)' : 'var(--brand-orange-light)', 
+              color: currentView === 'communication' ? '#ffffff' : 'var(--brand-orange)',
+              fontWeight: 900
+            }}>
+              M2M
+            </span>
+          </button>
         </div>
 
         {/* Right Utility Controls */}

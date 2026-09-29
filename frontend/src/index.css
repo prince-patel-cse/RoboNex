@@ -446,3 +446,18 @@ input:focus, select:focus {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* P2P Communication Wave Animations */
+@keyframes p2pWave {
+  0% { left: -20%; }
+  100% { left: 100%; }
+}
+
+.pulse-icon {
+  animation: pulseScale 2s infinite ease-in-out;
+}
+
+@keyframes pulseScale {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.18); opacity: 0.65; }
+}

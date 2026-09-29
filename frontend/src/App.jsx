@@ -3,6 +3,7 @@ import { useSimulationSocket } from './hooks/useSimulationSocket';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { RobotsPage } from './components/RobotsPage';
+import { CommunicationPage } from './components/CommunicationPage';
 import { WarehouseGrid } from './components/WarehouseGrid';
 import { TaskManager } from './components/TaskManager';
 import { RobotFleet } from './components/RobotFleet';
@@ -25,7 +26,7 @@ export default function App() {
     resetSimulation
   } = useSimulationSocket();
 
-  // Navigation View: 'landing' | 'simulator' | 'robots'
+  // Navigation View: 'landing' | 'simulator' | 'robots' | 'communication'
   const [currentView, setCurrentView] = useState('landing');
   const [interactionMode, setInteractionMode] = useState('BLOCK'); // 'BLOCK' | 'ADD_ROBOT'
   const [selectedRobotId, setSelectedRobotId] = useState(null);
@@ -76,6 +77,11 @@ export default function App() {
           onToggleFail={toggleRobotFailure}
           onAddRobot={addRobot}
         />
+      )}
+
+      {/* 3. Dedicated Communication & Protocol View */}
+      {currentView === 'communication' && (
+        <CommunicationPage />
       )}
 
       {/* 3. Simulator Dashboard View */}
