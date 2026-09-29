@@ -96,6 +96,20 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* GPU compositing hints for Three.js WebGL canvas — prevents page repaint on every 3D frame */
+canvas {
+  display: block;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Promote heavy animated panels to their own GPU layer */
+.glass-panel canvas,
+[data-three-canvas] {
+  isolation: isolate;
+}
+
 /* Professional Classic Panels */
 .glass-panel {
   background: var(--bg-card);
