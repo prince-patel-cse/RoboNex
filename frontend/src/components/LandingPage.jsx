@@ -60,51 +60,7 @@ export function LandingPage({ onLaunchSimulator, theme, toggleTheme }) {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', color: 'var(--text-primary)', transition: 'background-color 0.2s ease, color 0.2s ease' }}>
-      
-      {/* Top Header Navbar */}
-      <header className="app-header">
-        <div className="brand-badge" style={{ cursor: 'pointer' }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-          <div className="brand-icon">
-            <Box size={22} color="var(--brand-orange)" />
-          </div>
-          <div>
-            <div className="brand-title">ROBONEX</div>
-            <div className="brand-sub">Decentralized Multi-Robot Coordination</div>
-          </div>
-        </div>
-
-        {/* Navigation Links */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: '0.85rem', fontWeight: 700 }}>
-          <span style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => scrollToSection('features')}>Features</span>
-          <span style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => scrollToSection('decentralization')}>Decentralization</span>
-          <span style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => scrollToSection('architecture')}>Architecture</span>
-          <span style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => scrollToSection('faq')}>FAQ</span>
-        </nav>
-
-        {/* Theme Toggle & Dashboard CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={toggleTheme}
-            title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-          >
-            {theme === 'light' ? <Moon size={15} color="var(--brand-orange)" /> : <Sun size={15} color="#f59e0b" />}
-            <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onLaunchSimulator}
-            style={{ padding: '8px 18px', fontSize: '0.85rem' }}
-          >
-            <Play size={16} />
-            <span>Go to Dashboard</span>
-          </button>
-        </div>
-      </header>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', color: 'var(--text-primary)', transition: 'background-color 0.2s ease, color 0.2s ease', paddingTop: 20 }}>
 
       {/* Hero Section */}
       <section style={{ padding: '60px 28px 40px 28px', maxWidth: 1400, margin: '0 auto' }}>

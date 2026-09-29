@@ -1,6 +1,7 @@
-import React from 'react';
-import { Bot, Battery, Plus, Power, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bot, Battery, Plus, Power, AlertTriangle, Rotate3D } from 'lucide-react';
 import { getRobotColor } from './WarehouseGrid';
+import { Robot3DViewer } from './Robot3DViewer';
 
 export function RobotFleet({
   robots = [],
@@ -10,6 +11,8 @@ export function RobotFleet({
   selectedRobotId,
   onSelectRobot
 }) {
+  const [inspectRobot3D, setInspectRobot3D] = useState(null);
+
   return (
     <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -78,7 +81,21 @@ export function RobotFleet({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ padding: '3px 7px', fontSize: '0.7rem' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectRobot3D(r);
+                    }}
+                    title="View 3D Robot CAD Structure"
+                  >
+                    <Rotate3D size={12} color="var(--brand-orange)" />
+                    3D
+                  </button>
+
                   <span
                     className={`badge-status ${
                       r.status === 'MOVING' ? 'badge-moving' :
@@ -130,6 +147,13 @@ export function RobotFleet({
           );
         })}
       </div>
+
+      {inspectRobot3D && (
+        <Robot3DViewer
+          robot={inspectRobot3D}
+          onClose={() => setInspectRobot3D(null)}
+        />
+      )}
     </div>
   );
 }
