@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, Zap, CheckCircle2, Clock, Truck, Shuffle, AlertCircle, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Truck, Shuffle, AlertCircle, AlertTriangle, Zap, ArrowRight } from 'lucide-react';
 
 export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
   const [pickupX, setPickupX] = useState('');
@@ -92,15 +92,15 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
   return (
     <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Truck size={18} color="#6366f1" />
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Truck size={18} color="var(--brand-orange)" />
           Task Management
         </h3>
         <button
           type="button"
           onClick={handleRandomTask}
           className="btn btn-outline"
-          style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+          style={{ padding: '5px 10px', fontSize: '0.78rem' }}
           title="Dispatch a random pickup/delivery task"
         >
           <Shuffle size={14} />
@@ -113,11 +113,12 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
         <div
           style={{
             padding: '10px 12px',
-            background: 'rgba(244, 63, 94, 0.15)',
-            border: '1px solid rgba(244, 63, 94, 0.35)',
-            borderRadius: 8,
-            color: '#f43f5e',
+            background: 'var(--status-rose-bg)',
+            border: '1px solid var(--status-rose)',
+            borderRadius: 6,
+            color: 'var(--status-rose)',
             fontSize: '0.78rem',
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: 8
@@ -132,7 +133,7 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
-            <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'block', marginBottom: 4 }}>
               Pickup (X, Y)
             </label>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -145,15 +146,7 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
                   setLocalError(null);
                 }}
                 required
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  padding: '6px 8px',
-                  fontFamily: 'var(--font-mono)'
-                }}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
               />
               <input
                 type="number"
@@ -164,21 +157,13 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
                   setLocalError(null);
                 }}
                 required
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  padding: '6px 8px',
-                  fontFamily: 'var(--font-mono)'
-                }}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'block', marginBottom: 4 }}>
               Delivery (X, Y)
             </label>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -191,15 +176,7 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
                   setLocalError(null);
                 }}
                 required
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  padding: '6px 8px',
-                  fontFamily: 'var(--font-mono)'
-                }}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
               />
               <input
                 type="number"
@@ -210,15 +187,7 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
                   setLocalError(null);
                 }}
                 required
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  padding: '6px 8px',
-                  fontFamily: 'var(--font-mono)'
-                }}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
               />
             </div>
           </div>
@@ -226,9 +195,9 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
 
         {/* Urgency */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>
-            <span>Task Urgency Priority:</span>
-            <span style={{ color: urgency > 7 ? '#f43f5e' : urgency > 4 ? '#f59e0b' : '#10b981', fontWeight: 600 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: 4 }}>
+            <span>Priority Urgency:</span>
+            <span style={{ color: urgency > 7 ? 'var(--status-rose)' : urgency > 4 ? 'var(--brand-orange)' : 'var(--status-emerald)', fontWeight: 800 }}>
               Level {urgency}
             </span>
           </div>
@@ -238,25 +207,25 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
             max="10"
             value={urgency}
             onChange={e => setUrgency(e.target.value)}
-            style={{ width: '100%', accentColor: '#6366f1' }}
+            style={{ width: '100%', accentColor: 'var(--brand-orange)' }}
           />
         </div>
 
         <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
           <PlusCircle size={16} />
-          Create Task
+          Dispatch Task
         </button>
       </form>
 
       {/* Task Queue List */}
-      <div style={{ marginTop: 8 }}>
-        <h4 style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-          Recent Tasks ({tasks.length})
+      <div style={{ marginTop: 4 }}>
+        <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 800, marginBottom: 8 }}>
+          Active Tasks ({tasks.length})
         </h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '220px', overflowY: 'auto' }}>
           {tasks.length === 0 ? (
-            <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
-              No active tasks. Dispatch one above.
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center', padding: '16px 0' }}>
+              No active tasks in queue. Dispatch one above.
             </div>
           ) : (
             tasks.slice(-8).reverse().map(t => {
@@ -266,32 +235,34 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
                   key={t.id}
                   style={{
                     padding: '10px 12px',
-                    background: isUnreachable ? 'rgba(244,63,94,0.06)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${isUnreachable ? 'rgba(244,63,94,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                    borderRadius: 8,
+                    background: isUnreachable ? 'var(--status-rose-bg)' : 'var(--bg-subtle)',
+                    border: `1px solid ${isUnreachable ? 'var(--status-rose)' : 'var(--border-light)'}`,
+                    borderRadius: 6,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
                   }}
                 >
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                       <span>{t.id}</span>
-                      <span style={{ fontSize: '0.7rem', color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '1px 6px', borderRadius: 4 }}>
-                        ⚡ {t.urgency}
+                      <span style={{ fontSize: '0.7rem', color: 'var(--brand-orange)', background: 'var(--brand-orange-light)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--brand-orange)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <Zap size={11} color="var(--brand-orange)" /> P{t.urgency}
                       </span>
                       {isUnreachable && (
-                        <span title={t.error} style={{ fontSize: '0.65rem', color: '#f43f5e', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span title={t.error} style={{ fontSize: '0.65rem', color: 'var(--status-rose)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
                           <AlertTriangle size={12} />
                           No Path
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
-                      ({t.pickup.x},{t.pickup.y}) ➔ ({t.delivery.x},{t.delivery.y})
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-mono)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span>({t.pickup.x},{t.pickup.y})</span>
+                      <ArrowRight size={11} color="var(--text-muted)" />
+                      <span>({t.delivery.x},{t.delivery.y})</span>
                     </div>
                     {isUnreachable && (
-                      <div style={{ fontSize: '0.68rem', color: '#f43f5e', marginTop: 2 }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--status-rose)', marginTop: 2, fontWeight: 600 }}>
                         Awaiting obstacle removal to resume
                       </div>
                     )}
@@ -299,25 +270,15 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
 
                   <div style={{ textAlign: 'right' }}>
                     <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        background:
-                          t.status === 'COMPLETED' ? 'rgba(16,185,129,0.15)' :
-                          t.status === 'ASSIGNED' ? 'rgba(99,102,241,0.15)' :
-                          isUnreachable ? 'rgba(244,63,94,0.2)' :
-                          'rgba(245,158,11,0.15)',
-                        color:
-                          t.status === 'COMPLETED' ? '#10b981' :
-                          t.status === 'ASSIGNED' ? '#818cf8' :
-                          isUnreachable ? '#f43f5e' :
-                          '#f59e0b'
-                      }}
+                      className={`badge-status ${
+                        t.status === 'COMPLETED' ? 'badge-completed' :
+                        t.status === 'ASSIGNED' ? 'badge-moving' :
+                        isUnreachable ? 'badge-blocked' :
+                        'badge-waiting'
+                      }`}
                       title={t.error || ''}
                     >
-                      {t.status === 'COMPLETED' ? 'DONE' : isUnreachable ? 'QUEUED (BLOCKED)' : t.assignedTo || t.status}
+                      {t.status === 'COMPLETED' ? 'DONE' : isUnreachable ? 'QUEUED' : t.assignedTo || t.status}
                     </span>
                   </div>
                 </div>

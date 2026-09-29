@@ -1,197 +1,196 @@
 import React, { useState } from 'react';
-import { Play, Pause, RotateCcw, Sliders, Maximize2, CheckCircle2, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Play, Pause, Gauge, RotateCcw, Maximize2, CheckCircle2, Zap, ShieldCheck } from 'lucide-react';
 
 export function ControlBar({
   isRunning,
   speed,
-  stats = {},
-  grid = {},
+  stats,
+  grid,
   connected,
   onTogglePause,
   onSetSpeed,
   onResizeGrid,
   onReset
 }) {
-  const [newRows, setNewRows] = useState(grid.rows || 12);
-  const [newCols, setNewCols] = useState(grid.cols || 16);
-  const [isEditingGrid, setIsEditingGrid] = useState(false);
+  const [showResizeModal, setShowResizeModal] = useState(false);
+  const [newRows, setNewRows] = useState(grid?.rows || 12);
+  const [newCols, setNewCols] = useState(grid?.cols || 16);
+  const [resizeError, setResizeError] = useState(null);
 
-  const handleApplyResize = (e) => {
+  const handleResizeSubmit = (e) => {
     e.preventDefault();
-    onResizeGrid(parseInt(newRows), parseInt(newCols));
-    setIsEditingGrid(false);
+    setResizeError(null);
+    const res = onResizeGrid(parseInt(newRows), parseInt(newCols));
+    if (res && !res.success) {
+      setResizeError(res.reason);
+    } else {
+      setShowResizeModal(false);
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Top metrics bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <div className="stat-pill">
-          <div style={{ padding: 8, borderRadius: 8, background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <div className="stat-val" style={{ color: '#10b981' }}>{stats.tasksCompleted || 0}</div>
-            <div className="stat-label">Tasks Completed</div>
-          </div>
-        </div>
-
-        <div className="stat-pill">
-          <div style={{ padding: 8, borderRadius: 8, background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>
-            <ShieldCheck size={20} />
-          </div>
-          <div>
-            <div className="stat-val" style={{ color: '#818cf8' }}>{stats.conflictsResolved || 0}</div>
-            <div className="stat-label">Conflicts Resolved</div>
-          </div>
-        </div>
-
-        <div className="stat-pill">
-          <div style={{ padding: 8, borderRadius: 8, background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-            <RefreshCw size={20} />
-          </div>
-          <div>
-            <div className="stat-val" style={{ color: '#f59e0b' }}>{stats.deadlocksRecovered || 0}</div>
-            <div className="stat-label">Deadlocks Recovered</div>
-          </div>
-        </div>
-
-        <div className="stat-pill">
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: connected ? '#10b981' : '#f43f5e',
-              boxShadow: `0 0 8px ${connected ? '#10b981' : '#f43f5e'}`
-            }}
-          />
-          <div>
-            <div className="stat-val" style={{ fontSize: '0.95rem' }}>
-              {connected ? 'LIVE TELEMETRY' : 'DISCONNECTED'}
-            </div>
-            <div className="stat-label">P2P Mesh Network</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Control Actions Bar */}
-      <div
-        className="glass-panel"
-        style={{
-          padding: '12px 20px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 16
-        }}
-      >
-        {/* Play/Pause & Reset */}
+    <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        
+        {/* Controls Group */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Pause / Resume Button */}
           <button
             type="button"
-            className={`btn ${isRunning ? 'btn-outline' : 'btn-primary'}`}
             onClick={onTogglePause}
-            style={{ minWidth: 105 }}
+            className={`btn ${isRunning ? 'btn-dark' : 'btn-primary'}`}
           >
             {isRunning ? <Pause size={16} /> : <Play size={16} />}
-            {isRunning ? 'Pause' : 'Resume'}
+            <span>{isRunning ? 'Pause Engine' : 'Resume Engine'}</span>
           </button>
 
+          {/* Speed Slider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-subtle)', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border-light)' }}>
+            <Gauge size={15} color="var(--brand-orange)" />
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Speed:</span>
+            <input
+              type="range"
+              min="100"
+              max="1500"
+              step="50"
+              value={speed || 600}
+              onChange={(e) => onSetSpeed(parseInt(e.target.value))}
+              style={{ width: 90, accentColor: 'var(--brand-orange)' }}
+              title={`${speed}ms per tick`}
+            />
+            <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 800, minWidth: 45 }}>
+              {speed}ms
+            </span>
+          </div>
+
+          {/* Grid Resize Toggle */}
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              setNewRows(grid?.rows || 12);
+              setNewCols(grid?.cols || 16);
+              setResizeError(null);
+              setShowResizeModal(true);
+            }}
+          >
+            <Maximize2 size={15} />
+            <span>Resize ({grid?.cols}x{grid?.rows})</span>
+          </button>
+
+          {/* Reset Simulation */}
           <button
             type="button"
             className="btn btn-outline"
             onClick={onReset}
-            title="Reset warehouse fleet & tasks"
+            title="Reset simulation to factory state"
           >
             <RotateCcw size={15} />
-            Reset
+            <span>Reset</span>
           </button>
         </div>
 
-        {/* Speed Slider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.8rem', color: '#94a3b8' }}>
-          <Sliders size={16} />
-          <span>Speed:</span>
-          <input
-            type="range"
-            min="200"
-            max="1200"
-            step="100"
-            value={speed || 600}
-            onChange={(e) => onSetSpeed(parseInt(e.target.value))}
-            style={{ accentColor: '#06b6d4', width: 110 }}
-          />
-          <span style={{ fontFamily: 'var(--font-mono)', minWidth: 50 }}>{speed || 600}ms</span>
-        </div>
+        {/* Telemetry Metrics */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="stat-pill">
+            <CheckCircle2 size={18} color="var(--status-emerald)" />
+            <div>
+              <div className="stat-val">{stats?.tasksCompleted || 0}</div>
+              <div className="stat-label">Tasks Completed</div>
+            </div>
+          </div>
 
-        {/* Grid Dimensions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {!isEditingGrid ? (
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => {
-                setNewRows(grid.rows || 12);
-                setNewCols(grid.cols || 16);
-                setIsEditingGrid(true);
-              }}
-              style={{ fontSize: '0.78rem', padding: '6px 12px' }}
-            >
-              <Maximize2 size={14} />
-              Grid: {grid.cols}x{grid.rows}
-            </button>
-          ) : (
-            <form onSubmit={handleApplyResize} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="number"
-                min="6"
-                max="30"
-                value={newCols}
-                onChange={e => setNewCols(e.target.value)}
-                style={{
-                  width: 48,
-                  padding: '4px 6px',
-                  borderRadius: 6,
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff',
-                  fontFamily: 'var(--font-mono)'
-                }}
-              />
-              <span style={{ color: '#64748b' }}>x</span>
-              <input
-                type="number"
-                min="6"
-                max="30"
-                value={newRows}
-                onChange={e => setNewRows(e.target.value)}
-                style={{
-                  width: 48,
-                  padding: '4px 6px',
-                  borderRadius: 6,
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff',
-                  fontFamily: 'var(--font-mono)'
-                }}
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
-                Apply
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setIsEditingGrid(false)}
-                style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-              >
-                ✕
-              </button>
-            </form>
-          )}
+          <div className="stat-pill">
+            <Zap size={18} color="var(--brand-orange)" />
+            <div>
+              <div className="stat-val">{stats?.conflictsResolved || 0}</div>
+              <div className="stat-label">Conflicts Resolved</div>
+            </div>
+          </div>
+
+          <div className="stat-pill">
+            <ShieldCheck size={18} color="var(--status-blue)" />
+            <div>
+              <div className="stat-val">{stats?.deadlocksRecovered || 0}</div>
+              <div className="stat-label">Deadlocks Cleared</div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Resize Modal */}
+      {showResizeModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.5)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
+        }}>
+          <div className="glass-panel" style={{ width: 340, padding: 24, background: 'var(--bg-card)', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 14 }}>
+              Resize Warehouse Grid
+            </h3>
+
+            {resizeError && (
+              <div style={{ padding: '8px 12px', background: 'var(--status-rose-bg)', border: '1px solid var(--status-rose)', borderRadius: 6, color: 'var(--status-rose)', fontSize: '0.78rem', marginBottom: 12, fontWeight: 600 }}>
+                {resizeError}
+              </div>
+            )}
+
+            <form onSubmit={handleResizeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'block', marginBottom: 4 }}>
+                  Columns (Width: 6 to 30)
+                </label>
+                <input
+                  type="number"
+                  min="6"
+                  max="30"
+                  value={newCols}
+                  onChange={e => setNewCols(e.target.value)}
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'block', marginBottom: 4 }}>
+                  Rows (Height: 6 to 30)
+                </label>
+                <input
+                  type="number"
+                  min="6"
+                  max="30"
+                  value={newRows}
+                  onChange={e => setNewRows(e.target.value)}
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setShowResizeModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Apply Resize
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

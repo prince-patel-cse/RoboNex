@@ -1,25 +1,24 @@
 import React from 'react';
-import { Package, MapPin, AlertTriangle, Bot } from 'lucide-react';
+import { Package, MapPin, AlertTriangle } from 'lucide-react';
 
 const PRESET_COLORS = {
-  R1: { bg: '#6366f1', glow: 'rgba(99, 102, 241, 0.6)', border: '#818cf8' },
-  R2: { bg: '#06b6d4', glow: 'rgba(6, 182, 212, 0.6)', border: '#22d3ee' },
-  R3: { bg: '#10b981', glow: 'rgba(16, 185, 129, 0.6)', border: '#34d399' },
-  R4: { bg: '#f59e0b', glow: 'rgba(245, 158, 11, 0.6)', border: '#fbbf24' }
+  R1: { bg: '#c2410c', border: '#9a3412' }, // Dark Industrial Orange
+  R2: { bg: '#0f172a', border: '#1e293b' }, // Classic Dark Slate
+  R3: { bg: '#047857', border: '#065f46' }, // Emerald Green
+  R4: { bg: '#1d4ed8', border: '#1e40af' }  // Royal Blue
 };
 
 export function getRobotColor(robotId) {
   if (PRESET_COLORS[robotId]) return PRESET_COLORS[robotId];
-  // Deterministic HSL color generator for dynamic robots (R5, R6...)
+  // Deterministic HSL generator for dynamic robots (R5, R6...)
   let hash = 0;
   for (let i = 0; i < robotId.length; i++) {
     hash = robotId.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash % 360);
   return {
-    bg: `hsl(${hue}, 80%, 55%)`,
-    glow: `hsla(${hue}, 80%, 55%, 0.6)`,
-    border: `hsl(${hue}, 80%, 70%)`
+    bg: `hsl(${hue}, 75%, 40%)`,
+    border: `hsl(${hue}, 75%, 30%)`
   };
 }
 
@@ -56,11 +55,10 @@ export function WarehouseGrid({
   });
 
   // Collect planned path steps
-  // "x,y" -> Array of { robotId, t, action }
   const pathSteps = new Map();
   robots.forEach(r => {
     if (r.path && r.path.length > 0) {
-      r.path.forEach((step, idx) => {
+      r.path.forEach((step) => {
         const key = `${step.x},${step.y}`;
         if (!pathSteps.has(key)) pathSteps.set(key, []);
         pathSteps.get(key).push({
@@ -108,25 +106,25 @@ export function WarehouseGrid({
             key={key}
             className={cellClasses}
             onClick={() => handleCellClick(x, y, robot)}
-            title={`(${x}, ${y}) ${isBlocked ? '[BLOCKED]' : robot ? `[ROBOT ${robot.id}]` : ''}`}
+            title={`(${x}, ${y}) ${isBlocked ? '[WALL]' : robot ? `[AMR ${robot.id}]` : ''}`}
             style={{
               cursor: interactionMode === 'ADD_ROBOT' && !isBlocked && !robot ? 'crosshair' : 'pointer'
             }}
           >
             {/* Coordinate watermark */}
-            <span style={{ position: 'absolute', top: 2, left: 3, fontSize: '0.52rem', opacity: 0.35 }}>
+            <span style={{ position: 'absolute', top: 2, left: 3, fontSize: '0.52rem', color: 'var(--text-muted)', fontWeight: 600, opacity: isBlocked ? 0 : 0.85 }}>
               {x},{y}
             </span>
 
             {/* Task Markers */}
             {pickupTask && !robot && (
-              <span title={`Pickup for ${pickupTask.id}`} style={{ color: '#10b981', zIndex: 2 }}>
-                <Package size={15} />
+              <span title={`Pickup for Task ${pickupTask.id}`} style={{ color: 'var(--status-emerald)', zIndex: 2 }}>
+                <Package size={16} />
               </span>
             )}
             {deliveryTask && !robot && (
-              <span title={`Delivery for ${deliveryTask.id}`} style={{ color: '#06b6d4', zIndex: 2 }}>
-                <MapPin size={15} />
+              <span title={`Delivery for Task ${deliveryTask.id}`} style={{ color: 'var(--status-blue)', zIndex: 2 }}>
+                <MapPin size={16} />
               </span>
             )}
 
@@ -142,16 +140,15 @@ export function WarehouseGrid({
                         className="path-dot"
                         style={{
                           backgroundColor: color,
-                          boxShadow: `0 0 5px ${color}`,
-                          opacity: step.isFocus ? 0.9 : 0.25
+                          opacity: step.isFocus ? 0.95 : 0.25
                         }}
                       />
                     );
                   })}
                 </div>
-                {/* If selected robot steps through here, show its t reservation */}
+                {/* If selected robot steps through here, show its reservation tick t */}
                 {focusedTraverser && (
-                  <span style={{ fontSize: '0.55rem', fontFamily: 'var(--font-mono)', color: '#cbd5e1', lineHeight: 1 }}>
+                  <span style={{ fontSize: '0.55rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1 }}>
                     t={focusedTraverser.t}
                   </span>
                 )}
@@ -164,20 +161,20 @@ export function WarehouseGrid({
                 className={`robot-marker ${robot.status === 'MOVING' ? 'moving' : ''}`}
                 style={{
                   backgroundColor: getRobotColor(robot.id).bg,
-                  borderColor: selectedRobotId === robot.id ? '#ffffff' : getRobotColor(robot.id).border,
-                  borderWidth: selectedRobotId === robot.id ? 2 : 1,
+                  borderColor: selectedRobotId === robot.id ? 'var(--brand-orange)' : getRobotColor(robot.id).border,
+                  borderWidth: selectedRobotId === robot.id ? 3 : 1,
                   borderStyle: 'solid',
-                  boxShadow: `0 0 16px ${getRobotColor(robot.id).glow}`,
-                  opacity: robot.status === 'FAILED' ? 0.45 : 1,
+                  boxShadow: selectedRobotId === robot.id ? '0 0 0 3px rgba(194, 65, 12, 0.4)' : '0 2px 5px rgba(0,0,0,0.25)',
+                  opacity: robot.status === 'FAILED' ? 0.5 : 1,
                   transform: selectedRobotId === robot.id ? 'scale(1.12)' : 'none'
                 }}
               >
                 {robot.status === 'FAILED' ? (
-                  <AlertTriangle size={14} color="#f43f5e" />
+                  <AlertTriangle size={14} color="#ffffff" />
                 ) : (
                   robot.id
                 )}
-                {/* Parcel payload badge if carrying cargo */}
+                {/* Cargo payload badge */}
                 {robot.stage === 'TO_DELIVERY' && (
                   <div
                     style={{
@@ -186,11 +183,11 @@ export function WarehouseGrid({
                       right: -4,
                       width: 10,
                       height: 10,
-                      background: '#10b981',
+                      background: 'var(--status-emerald)',
                       borderRadius: '50%',
-                      border: '1.5px solid #fff'
+                      border: '1.5px solid #ffffff'
                     }}
-                    title="Carrying Cargo"
+                    title="Carrying Cargo Payload"
                   />
                 )}
               </div>
