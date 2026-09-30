@@ -1,16 +1,15 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Package, MapPin, AlertTriangle } from 'lucide-react';
 
 const PRESET_COLORS = {
-  R1: { bg: '#c2410c', border: '#9a3412' }, // Dark Industrial Orange
-  R2: { bg: '#0f172a', border: '#1e293b' }, // Classic Dark Slate
-  R3: { bg: '#047857', border: '#065f46' }, // Emerald Green
-  R4: { bg: '#1d4ed8', border: '#1e40af' }  // Royal Blue
+  R1: { bg: '#c2410c', border: '#9a3412' },
+  R2: { bg: '#0f172a', border: '#1e293b' },
+  R3: { bg: '#047857', border: '#065f46' },
+  R4: { bg: '#1d4ed8', border: '#1e40af' }
 };
 
 export function getRobotColor(robotId) {
   if (PRESET_COLORS[robotId]) return PRESET_COLORS[robotId];
-  // Deterministic HSL generator for dynamic robots (R5, R6...)
   let hash = 0;
   for (let i = 0; i < robotId.length; i++) {
     hash = robotId.charCodeAt(i) + ((hash << 5) - hash);
@@ -22,11 +21,23 @@ export function getRobotColor(robotId) {
   };
 }
 
+// Compute directional arrow from one path step to the next
+function getDirectionArrow(steps, currentX, currentY) {
+  if (!steps || steps.length === 0) return null;
+  // Sort by time step t, find earliest
+  const sorted = [...steps].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+  const first = sorted[0];
+  if (!first) return null;
+  // We can't know the previous cell, so we just show a dot marker
+  return null; // arrows are shown on path dots using robotId color
+}
+
 export function WarehouseGrid({
   grid,
   robots = [],
   tasks = [],
-  interactionMode = 'BLOCK', // 'BLOCK' | 'ADD_ROBOT'
+  events = [],
+  interactionMode = 'BLOCK',
   onCellClick,
   selectedRobotId,
   onSelectRobot
@@ -58,18 +69,47 @@ export function WarehouseGrid({
   const pathSteps = new Map();
   robots.forEach(r => {
     if (r.path && r.path.length > 0) {
-      r.path.forEach((step) => {
+      r.path.forEach((step, idx) => {
         const key = `${step.x},${step.y}`;
         if (!pathSteps.has(key)) pathSteps.set(key, []);
         pathSteps.get(key).push({
           robotId: r.id,
           t: step.t,
           action: step.action,
-          isFocus: selectedRobotId ? selectedRobotId === r.id : true
+          isFocus: selectedRobotId ? selectedRobotId === r.id : true,
+          nextStep: r.path[idx + 1] || null,
+          prevStep: r.path[idx - 1] || null
         });
       });
     }
   });
+
+  // Robots currently rerouting (WAITING + recent REROUTE event)
+  const reroutingRobots = new Set();
+  const now = Date.now();
+  events.forEach(e => {
+    if ((e.source === 'REROUTE' || e.source === 'BLOCKED') && e.message) {
+      // extract robot id from message like "R1 dynamically replanned..."
+      const match = e.message.match(/^(R\d+)/);
+      if (match) reroutingRobots.add(match[1]);
+    }
+  });
+
+  // Direction arrow character from step coords
+  const getArrow = (step) => {
+    if (!step.nextStep) return null;
+    const dx = step.nextStep.x - step.t; // can't reliably compute from t
+    // use relative position if prev step exists
+    if (step.prevStep) {
+      const pdx = step.x - step.prevStep.x;
+      const pdy = step.y - step.prevStep.y;
+      if (pdx > 0) return '→';
+      if (pdx < 0) return '←';
+      if (pdy > 0) return '↓';
+      if (pdy < 0) return '↑';
+    }
+    return null;
+  };
 
   const handleCellClick = (x, y, robot) => {
     if (robot) {
@@ -91,6 +131,9 @@ export function WarehouseGrid({
         const deliveryTask = deliveryMap.get(key);
         const traversingSteps = pathSteps.get(key) || [];
 
+        const isRerouting = robot && reroutingRobots.has(robot.id);
+        const isSelected = robot && selectedRobotId === robot.id;
+
         let cellClasses = 'cell';
         if (isBlocked) cellClasses += ' blocked';
         if (pickupTask) cellClasses += ' pickup-point';
@@ -100,6 +143,17 @@ export function WarehouseGrid({
         }
 
         const focusedTraverser = traversingSteps.find(s => s.isFocus);
+
+        // Direction arrow for focused path
+        let arrow = null;
+        if (focusedTraverser && focusedTraverser.prevStep) {
+          const pdx = focusedTraverser.x - focusedTraverser.prevStep.x;
+          const pdy = focusedTraverser.y - focusedTraverser.prevStep.y;
+          if (pdx > 0) arrow = '→';
+          else if (pdx < 0) arrow = '←';
+          else if (pdy > 0) arrow = '↓';
+          else if (pdy < 0) arrow = '↑';
+        }
 
         elements.push(
           <div
@@ -128,10 +182,10 @@ export function WarehouseGrid({
               </span>
             )}
 
-            {/* Space-Time Reservation Planned Dots */}
+            {/* Space-Time Reservation Path Dots + Direction Arrows */}
             {!robot && !isBlocked && traversingSteps.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, zIndex: 1 }}>
-                <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, position: 'relative' }}>
                   {traversingSteps.map((step, idx) => {
                     const color = getRobotColor(step.robotId).bg;
                     return (
@@ -140,15 +194,25 @@ export function WarehouseGrid({
                         className="path-dot"
                         style={{
                           backgroundColor: color,
-                          opacity: step.isFocus ? 0.95 : 0.25
+                          opacity: step.isFocus ? 0.95 : 0.25,
+                          transition: 'opacity 0.3s ease'
                         }}
                       />
                     );
                   })}
                 </div>
-                {/* If selected robot steps through here, show its reservation tick t */}
+                {/* Direction arrow for focused traverser */}
+                {focusedTraverser && arrow && (
+                  <span
+                    className="path-arrow"
+                    style={{ color: getRobotColor(focusedTraverser.robotId).bg }}
+                  >
+                    {arrow}
+                  </span>
+                )}
+                {/* Reservation tick */}
                 {focusedTraverser && (
-                  <span style={{ fontSize: '0.55rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1 }}>
+                  <span style={{ fontSize: '0.52rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1 }}>
                     t={focusedTraverser.t}
                   </span>
                 )}
@@ -157,38 +221,69 @@ export function WarehouseGrid({
 
             {/* Robot Marker */}
             {robot && (
-              <div
-                className={`robot-marker ${robot.status === 'MOVING' ? 'moving' : ''}`}
-                style={{
-                  backgroundColor: getRobotColor(robot.id).bg,
-                  borderColor: selectedRobotId === robot.id ? 'var(--brand-orange)' : getRobotColor(robot.id).border,
-                  borderWidth: selectedRobotId === robot.id ? 3 : 1,
-                  borderStyle: 'solid',
-                  boxShadow: selectedRobotId === robot.id ? '0 0 0 3px rgba(194, 65, 12, 0.4)' : '0 2px 5px rgba(0,0,0,0.25)',
-                  opacity: robot.status === 'FAILED' ? 0.5 : 1,
-                  transform: selectedRobotId === robot.id ? 'scale(1.12)' : 'none'
-                }}
-              >
-                {robot.status === 'FAILED' ? (
-                  <AlertTriangle size={14} color="#ffffff" />
-                ) : (
-                  robot.id
+              <div style={{ position: 'relative' }}>
+                <div
+                  className={`robot-marker ${robot.status === 'MOVING' ? 'moving' : ''} ${isSelected ? 'selected-active' : ''}`}
+                  style={{
+                    backgroundColor: getRobotColor(robot.id).bg,
+                    borderColor: isSelected ? 'var(--brand-orange)' : getRobotColor(robot.id).border,
+                    borderWidth: isSelected ? 2 : 1,
+                    borderStyle: 'solid',
+                    boxShadow: !isSelected ? '0 2px 5px rgba(0,0,0,0.25)' : undefined,
+                    opacity: robot.status === 'FAILED' ? 0.45 : 1
+                  }}
+                >
+                  {robot.status === 'FAILED' ? (
+                    <AlertTriangle size={13} color="#ffffff" />
+                  ) : (
+                    robot.id
+                  )}
+                  {/* Cargo payload badge */}
+                  {robot.stage === 'TO_DELIVERY' && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: -4,
+                        right: -4,
+                        width: 10,
+                        height: 10,
+                        background: 'var(--status-emerald)',
+                        borderRadius: '50%',
+                        border: '1.5px solid #ffffff'
+                      }}
+                      title="Carrying Cargo Payload"
+                    />
+                  )}
+                </div>
+
+                {/* SELECTED label below marker */}
+                {isSelected && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: -14,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'var(--brand-orange)',
+                    color: '#fff',
+                    fontSize: '0.38rem',
+                    fontWeight: 900,
+                    padding: '1px 4px',
+                    borderRadius: 2,
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.05em',
+                    zIndex: 25,
+                    pointerEvents: 'none'
+                  }}>
+                    ◉ ACTIVE
+                  </div>
                 )}
-                {/* Cargo payload badge */}
-                {robot.stage === 'TO_DELIVERY' && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: -4,
-                      right: -4,
-                      width: 10,
-                      height: 10,
-                      background: 'var(--status-emerald)',
-                      borderRadius: '50%',
-                      border: '1.5px solid #ffffff'
-                    }}
-                    title="Carrying Cargo Payload"
-                  />
+
+                {/* PATH RECALCULATING badge */}
+                {isRerouting && !isSelected && (
+                  <div className="rerouting-badge">↺ REROUTING</div>
+                )}
+                {isRerouting && isSelected && (
+                  <div className="rerouting-badge" style={{ bottom: -24 }}>↺ REROUTING</div>
                 )}
               </div>
             )}

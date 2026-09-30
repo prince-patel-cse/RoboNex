@@ -90,7 +90,7 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
   const activeError = localError || actionError;
 
   return (
-    <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="glass-panel anim-fade-in" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Truck size={18} color="var(--brand-orange)" />
@@ -224,8 +224,10 @@ export function TaskManager({ tasks = [], onAddTask, grid, actionError }) {
         </h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '220px', overflowY: 'auto' }}>
           {tasks.length === 0 ? (
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center', padding: '16px 0' }}>
-              No active tasks in queue. Dispatch one above.
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center', padding: '20px 8px' }}>
+              <Truck size={28} color="var(--border-strong)" style={{ display: 'block', margin: '0 auto 8px' }} />
+              <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 3 }}>No tasks in queue</div>
+              <div style={{ fontSize: '0.74rem' }}>Use the form above to dispatch pickup/delivery tasks, or try <strong style={{ color: 'var(--brand-orange)' }}>Auto Dispatch</strong>.</div>
             </div>
           ) : (
             tasks.slice(-8).reverse().map(t => {

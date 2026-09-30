@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { getRobotColor } from './WarehouseGrid';
 import { 
   Box, 
   RotateCcw, 
@@ -18,6 +22,71 @@ import {
   MousePointer
 } from 'lucide-react';
 
+/**
+ * Generates smooth curved trajectory points for visual path overlay on the floor.
+ * Safely adds gentle corner rounding inside walkable intersections.
+ */
+function generateCurvedTrajectoryPoints(pathCells, cellSize, halfWidth, halfHeight) {
+  if (!pathCells || pathCells.length === 0) return [];
+
+  const worldPoints = pathCells.map(c => ({
+    x: (c.x + 0.5) * cellSize - halfWidth,
+    z: (c.y + 0.5) * cellSize - halfHeight
+  }));
+
+  if (worldPoints.length <= 2) {
+    return worldPoints.map(p => new THREE.Vector3(p.x, 0.12, p.z));
+  }
+
+  const result = [];
+  const filletRadius = 0.35; // Safe inner radius within cell intersection
+  result.push(new THREE.Vector3(worldPoints[0].x, 0.12, worldPoints[0].z));
+
+  for (let i = 1; i < worldPoints.length - 1; i++) {
+    const prev = worldPoints[i - 1];
+    const curr = worldPoints[i];
+    const next = worldPoints[i + 1];
+
+    const vInX = curr.x - prev.x;
+    const vInZ = curr.z - prev.z;
+    const lenIn = Math.hypot(vInX, vInZ);
+
+    const vOutX = next.x - curr.x;
+    const vOutZ = next.z - curr.z;
+    const lenOut = Math.hypot(vOutX, vOutZ);
+
+    if (lenIn > 0.1 && lenOut > 0.1) {
+      const uInX = vInX / lenIn;
+      const uInZ = vInZ / lenIn;
+      const uOutX = vOutX / lenOut;
+      const uOutZ = vOutZ / lenOut;
+      const dot = uInX * uOutX + uInZ * uOutZ;
+
+      if (dot < 0.75) {
+        // Corner fillet
+        const pStart = { x: curr.x - uInX * filletRadius, z: curr.z - uInZ * filletRadius };
+        const pEnd = { x: curr.x + uOutX * filletRadius, z: curr.z + uOutZ * filletRadius };
+
+        result.push(new THREE.Vector3(pStart.x, 0.12, pStart.z));
+        for (let s = 1; s <= 2; s++) {
+          const u = s / 3;
+          const inv = 1 - u;
+          const bx = inv * inv * pStart.x + 2 * inv * u * curr.x + u * u * pEnd.x;
+          const bz = inv * inv * pStart.z + 2 * inv * u * curr.z + u * u * pEnd.z;
+          result.push(new THREE.Vector3(bx, 0.12, bz));
+        }
+        result.push(new THREE.Vector3(pEnd.x, 0.12, pEnd.z));
+        continue;
+      }
+    }
+    result.push(new THREE.Vector3(curr.x, 0.12, curr.z));
+  }
+
+  const last = worldPoints[worldPoints.length - 1];
+  result.push(new THREE.Vector3(last.x, 0.12, last.z));
+  return result;
+}
+
 export function Warehouse3DGrid({
   grid = { rows: 10, cols: 10, blockedCells: [] },
   robots = [],
@@ -28,7 +97,6 @@ export function Warehouse3DGrid({
   onCellClick = () => {}
 }) {
   const mountRef = useRef(null);
-  const [isThreeLoaded, setIsThreeLoaded] = useState(!!window.THREE);
   const [viewPreset, setViewPreset] = useState('ISOMETRIC'); // 'ISOMETRIC' | 'TOP' | 'FRONT'
   const [hoveredCellPos, setHoveredCellPos] = useState(null);
 
@@ -41,30 +109,32 @@ export function Warehouse3DGrid({
   const pathLinesRef = useRef([]);
   const hoverMeshRef = useRef(null);
   const animFrameRef = useRef(null);
+  const gltfTemplateRef = useRef(null);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const clockRef = useRef(new THREE.Clock());
 
   // Camera Damping & Rotational Inertia State
   const sphericalRef = useRef({ radius: 26, theta: Math.PI / 4, phi: Math.PI / 3.2 });
   const targetSphericalRef = useRef({ radius: 26, theta: Math.PI / 4, phi: Math.PI / 3.2 });
 
-  // Load Three.js dynamically if needed
-  useEffect(() => {
-    if (window.THREE) {
-      setIsThreeLoaded(true);
-      return;
-    }
+  // Live data refs — updated every tick WITHOUT triggering re-render
+  const robotsDataRef = useRef([]);
+  const selectedRobotIdRef = useRef(null);
+  const pendingRobotSyncRef = useRef(false); // flag: animate loop should re-sync robots
 
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-    script.async = true;
-    script.onload = () => setIsThreeLoaded(true);
-    document.head.appendChild(script);
+  // Load model.glb once for the entire simulation
+  useEffect(() => {
+    const loader = new GLTFLoader();
+    loader.load('/model.glb', (gltf) => {
+      gltfTemplateRef.current = gltf;
+      setModelLoaded(true);
+    }, undefined, (err) => console.error('Failed to load /model.glb in simulation:', err));
   }, []);
 
   // Initialize Large-Scale High-Precision 3D Warehouse Simulation
   useEffect(() => {
-    if (!isThreeLoaded || !mountRef.current || !window.THREE) return;
+    if (!mountRef.current) return;
 
-    const THREE = window.THREE;
     const container = mountRef.current;
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -88,12 +158,12 @@ export function Warehouse3DGrid({
     // 3. Renderer with high PBR quality & soft shadows
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Cap for smooth FPS
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -112,8 +182,8 @@ export function Warehouse3DGrid({
     const mainSun = new THREE.DirectionalLight(0xfff8ee, 1.4);
     mainSun.position.set(halfWidth * 1.5, 40, halfHeight * 1.5);
     mainSun.castShadow = true;
-    mainSun.shadow.mapSize.width = 2048;
-    mainSun.shadow.mapSize.height = 2048;
+    mainSun.shadow.mapSize.width = 1024; // Reduced for performance
+    mainSun.shadow.mapSize.height = 1024;
     mainSun.shadow.bias = -0.0002;
     mainSun.shadow.camera.near = 0.5;
     mainSun.shadow.camera.far = 80;
@@ -430,20 +500,312 @@ export function Warehouse3DGrid({
       animFrameRef.current = requestAnimationFrame(animate);
 
       updateCamera();
+      const delta = clockRef.current.getDelta();
+      const dt = Math.min(delta, 0.05);
+      const SPEED = 3.6;
+      const SNAP = 0.04;
 
-      // Animate AMRs
+      // ── PROCESS PENDING ROBOT SYNC (runs in RAF, not in useEffect) ────────────
+      // This is the key fix for stutter: instead of doing all work in useEffect
+      // (which blocks the frame), we do it here in the animation loop.
+      if (pendingRobotSyncRef.current && sceneRef.current && gltfTemplateRef.current) {
+        pendingRobotSyncRef.current = false;
+        const scene = sceneRef.current;
+        const robots = robotsDataRef.current || [];
+        const selId = selectedRobotIdRef.current;
+        const cellSize = 2.0;
+        const rows = grid.rows || 10;
+        const cols = grid.cols || 10;
+        const halfWidth = (cols * cellSize) / 2;
+        const halfHeight = (rows * cellSize) / 2;
+
+        // Remove robots that no longer exist
+        const currentIds = new Set(robots.map(r => r.id));
+        Object.keys(robotMeshesRef.current).forEach(id => {
+          if (!currentIds.has(id)) {
+            scene.remove(robotMeshesRef.current[id].group);
+            delete robotMeshesRef.current[id];
+          }
+        });
+
+        robots.forEach(r => {
+          const posX = (r.position && typeof r.position.x === 'number') ? r.position.x : 0;
+          const posY = (r.position && typeof r.position.y === 'number') ? r.position.y : 0;
+          const targetX = (posX + 0.5) * cellSize - halfWidth;
+          const targetZ = (posY + 0.5) * cellSize - halfHeight;
+
+          if (!robotMeshesRef.current[r.id]) {
+            // NEW ROBOT — clone model and set up
+            const rGroup = new THREE.Group();
+            rGroup.userData = { robotId: r.id };
+            const clonedModel = SkeletonUtils.clone(gltfTemplateRef.current.scene);
+            clonedModel.scale.set(1.22, 1.22, 1.22);
+            clonedModel.position.set(0, 0, 0);
+
+            const robotColor = getRobotColor(r.id);
+            const statusColor = r.status === 'MOVING' ? 0xea580c :
+                                r.status === 'FAILED' ? 0xef4444 :
+                                r.status === 'WAITING' ? 0x3b82f6 : 0x10b981;
+            let glowMat = null;
+
+            clonedModel.traverse(child => {
+              if (!child.isMesh) return;
+              child.castShadow = true;
+              child.receiveShadow = true;
+              if (!child.material) return;
+              const n = child.material.name;
+              if (n === 'orange') {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: new THREE.Color(robotColor.bg || '#ea580c'),
+                  metalness: 0.65, roughness: 0.35,
+                  emissive: new THREE.Color(robotColor.bg || '#ea580c'),
+                  emissiveIntensity: 0.16
+                });
+              } else if (n === 'shell') {
+                child.material = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.65, roughness: 0.3 });
+              } else if (n === 'glow') {
+                glowMat = new THREE.MeshStandardMaterial({
+                  color: statusColor, emissive: statusColor, emissiveIntensity: 2.2, roughness: 0.15
+                });
+                child.material = glowMat;
+              } else if (n === 'steel') {
+                child.material = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.92, roughness: 0.18 });
+              } else if (n === 'graphite') {
+                child.material = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6, roughness: 0.38 });
+              } else if (n === 'rubber') {
+                child.material = new THREE.MeshStandardMaterial({ color: 0x181a1d, metalness: 0.1, roughness: 0.85 });
+              }
+            });
+
+            // Bay liner + light
+            const bayLiner = new THREE.Mesh(
+              new THREE.BoxGeometry(0.56, 0.42, 0.62),
+              new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6, metalness: 0.7, side: THREE.BackSide })
+            );
+            bayLiner.position.set(0, 0.45, 0.02);
+            clonedModel.add(bayLiner);
+
+            const bayLight = new THREE.PointLight(0xffedd5, 1.4, 1.4);
+            bayLight.position.set(0, 0.55, 0.02);
+            clonedModel.add(bayLight);
+
+            // Cargo group
+            const cargoGroup = new THREE.Group();
+            cargoGroup.position.set(0, 0.38, 0.02);
+            const cargoBox = new THREE.Mesh(
+              new THREE.BoxGeometry(0.38, 0.28, 0.42),
+              new THREE.MeshStandardMaterial({ color: 0xc27803, roughness: 0.75, metalness: 0.06 })
+            );
+            cargoBox.castShadow = true;
+            cargoGroup.add(cargoBox);
+            const tapeMesh = new THREE.Mesh(
+              new THREE.BoxGeometry(0.385, 0.05, 0.425),
+              new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.35 })
+            );
+            cargoGroup.add(tapeMesh);
+            cargoGroup.visible = (r.stage === 'TO_DELIVERY' || r.status === 'DELIVERING');
+            clonedModel.add(cargoGroup);
+
+            rGroup.add(clonedModel);
+
+            const mixer = new THREE.AnimationMixer(clonedModel);
+            const actions = {};
+            if (gltfTemplateRef.current.animations) {
+              gltfTemplateRef.current.animations.forEach(clip => {
+                actions[clip.name] = mixer.clipAction(clip);
+              });
+            }
+
+            const selectRing = new THREE.Mesh(
+              new THREE.RingGeometry(0.75, 0.95, 32),
+              new THREE.MeshBasicMaterial({ color: 0xc2410c, side: THREE.DoubleSide })
+            );
+            selectRing.rotation.x = -Math.PI / 2;
+            selectRing.position.y = 0.02;
+            selectRing.visible = selId === r.id;
+            rGroup.add(selectRing);
+
+            rGroup.position.set(targetX, 0, targetZ);
+            scene.add(rGroup);
+
+            robotMeshesRef.current[r.id] = {
+              group: rGroup, clonedModel, mixer, actions, glowMat,
+              cargoMesh: cargoGroup, selectRing,
+              targetPos: { x: targetX, z: targetZ },
+              waypoints: [], activeWaypoint: null,
+              nextStep: (r.path && r.path[0]) ? { x: r.path[0].x, y: r.path[0].y } : null,
+              currentSpeed: 0, prevStage: r.stage, prevStatus: r.status, status: r.status,
+              isAnimatingCargo: false, cargoAnimFrame: 0, cargoAnimDir: 0
+            };
+          } else {
+            // EXISTING ROBOT — lightweight update only
+            const rData = robotMeshesRef.current[r.id];
+
+            if (rData.targetPos.x !== targetX || rData.targetPos.z !== targetZ) {
+              if (rData.waypoints.length < 8) {
+                rData.waypoints.push({ x: targetX, z: targetZ });
+              } else {
+                rData.waypoints = [{ x: targetX, z: targetZ }];
+                rData.activeWaypoint = null;
+                rData.group.position.set(targetX, 0, targetZ);
+              }
+              rData.targetPos = { x: targetX, z: targetZ };
+            }
+
+            rData.nextStep = (r.path && r.path[0]) ? { x: r.path[0].x, y: r.path[0].y } : null;
+            rData.status = r.status;
+            rData.selectRing.visible = selId === r.id;
+
+            const statusColor = r.status === 'MOVING' ? 0xea580c :
+                                r.status === 'FAILED' ? 0xef4444 :
+                                r.status === 'WAITING' ? 0x3b82f6 : 0x10b981;
+            if (rData.glowMat) {
+              rData.glowMat.color.setHex(statusColor);
+              rData.glowMat.emissive.setHex(statusColor);
+            }
+
+            // Trigger cargo animations via flags (executed in RAF below, not via setInterval)
+            if ((r.status === 'PICKING_UP' || (rData.prevStage === 'TO_PICKUP' && r.stage === 'TO_DELIVERY')) && !rData.isAnimatingCargo) {
+              rData.isAnimatingCargo = true;
+              rData.cargoAnimDir = 1; // 1 = pickup (in)
+              rData.cargoAnimFrame = 0;
+              rData.cargoMesh.visible = true;
+              rData.cargoMesh.position.set(0, 0.85, 0.45);
+              if (rData.actions['hatch-open']) { rData.actions['hatch-close']?.stop(); rData.actions['hatch-open'].reset().setLoop(THREE.LoopOnce).play(); }
+              if (rData.actions['door-open'])  { rData.actions['door-close']?.stop();  rData.actions['door-open'].reset().setLoop(THREE.LoopOnce).play(); }
+            } else if ((r.status === 'DELIVERING' || (rData.prevStage === 'TO_DELIVERY' && !r.stage)) && !rData.isAnimatingCargo) {
+              rData.isAnimatingCargo = true;
+              rData.cargoAnimDir = -1; // -1 = drop (out)
+              rData.cargoAnimFrame = 0;
+              if (rData.actions['door-open'])  { rData.actions['door-close']?.stop();  rData.actions['door-open'].reset().setLoop(THREE.LoopOnce).play(); }
+              if (rData.actions['hatch-open']) { rData.actions['hatch-close']?.stop(); rData.actions['hatch-open'].reset().setLoop(THREE.LoopOnce).play(); }
+            } else if (!rData.isAnimatingCargo) {
+              rData.cargoMesh.visible = (r.stage === 'TO_DELIVERY' || r.status === 'DELIVERING');
+            }
+
+            rData.prevStage = r.stage;
+            rData.prevStatus = r.status;
+          }
+        });
+
+        // Rebuild selected robot path line
+        pathLinesRef.current.forEach(line => scene.remove(line));
+        pathLinesRef.current = [];
+        if (selId) {
+          const selRobot = robots.find(r => r.id === selId);
+          if (selRobot && selRobot.path && selRobot.path.length > 0) {
+            const cellSize2 = 2.0;
+            const pathCells = [{ x: selRobot.position.x, y: selRobot.position.y }, ...selRobot.path];
+            const points = generateCurvedTrajectoryPoints(pathCells, cellSize2, halfWidth, halfHeight);
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMesh = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xea580c, linewidth: 3 }));
+            scene.add(lineMesh);
+            pathLinesRef.current.push(lineMesh);
+          }
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // Animate all AMRs — strictly axis-aligned movement only (no diagonals)
       Object.values(robotMeshesRef.current).forEach(rData => {
-        if (rData.lidar) rData.lidar.rotation.y += 0.12;
+        if (rData.mixer) rData.mixer.update(delta);
+        if (rData.lidar) rData.lidar.rotation.y += 0.10;
 
-        if (rData.group && rData.targetPos) {
-          rData.group.position.x += (rData.targetPos.x - rData.group.position.x) * 0.18;
-          rData.group.position.z += (rData.targetPos.z - rData.group.position.z) * 0.18;
+        if (!rData.group) return;
 
-          const dx = rData.targetPos.x - rData.group.position.x;
-          const dz = rData.targetPos.z - rData.group.position.z;
-          if (Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05) {
-            const targetAngle = Math.atan2(dx, dz);
-            rData.group.rotation.y += (targetAngle - rData.group.rotation.y) * 0.2;
+        // ── STRICT AXIS-ALIGNED WAYPOINT MOVEMENT ──────────────────────────────
+        // Pull next waypoint from queue when arrived at current one
+        if (!rData.activeWaypoint && rData.waypoints && rData.waypoints.length > 0) {
+          rData.activeWaypoint = rData.waypoints.shift();
+        }
+
+        if (rData.activeWaypoint) {
+          const wp = rData.activeWaypoint;
+          const pos = rData.group.position;
+
+          // Compute per-axis deltas
+          const remX = wp.x - pos.x;
+          const remZ = wp.z - pos.z;
+          const absX = Math.abs(remX);
+          const absZ = Math.abs(remZ);
+
+          // Decide which axis to move along (whichever is not yet settled)
+          // This enforces Manhattan (grid) movement: complete X before Z or vice-versa.
+          // Priority: settle the axis that's further out-of-place first.
+          const step = SPEED * dt;
+
+          if (absX > SNAP) {
+            // Move only along X
+            const moveX = Math.min(absX, step) * Math.sign(remX);
+            pos.x += moveX;
+            if (absZ > SNAP) pos.z += 0; // lock Z while doing X
+          } else if (absZ > SNAP) {
+            // X is settled, now move only along Z
+            pos.x = wp.x; // lock X exactly
+            const moveZ = Math.min(absZ, step) * Math.sign(remZ);
+            pos.z += moveZ;
+          } else {
+            // Arrived at waypoint — snap exactly
+            pos.x = wp.x;
+            pos.z = wp.z;
+            rData.activeWaypoint = null; // consume it
+          }
+
+          // ── HEADING: face the direction the robot is actually moving ──────────
+          const movingX = Math.abs(remX) > SNAP;
+          const movingZ = Math.abs(remZ) > SNAP;
+          let desiredHeading = rData.group.rotation.y;
+          if (movingX) desiredHeading = Math.sign(remX) > 0 ? Math.PI / 2 : -Math.PI / 2;
+          else if (movingZ) desiredHeading = Math.sign(remZ) > 0 ? Math.PI : 0;
+
+          let angleDiff = desiredHeading - rData.group.rotation.y;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          rData.group.rotation.y += THREE.MathUtils.clamp(angleDiff, -8 * dt, 8 * dt);
+
+          // ── WHEEL ANIMATION ──────────────────────────────────────────────────
+          const isMoving = absX > SNAP || absZ > SNAP;
+          if (rData.actions && rData.actions['wheel-roll']) {
+            const wAction = rData.actions['wheel-roll'];
+            if (isMoving) {
+              if (!wAction.isRunning()) wAction.setLoop(THREE.LoopRepeat).play();
+              wAction.timeScale = 1.0;
+            } else {
+              if (wAction.isRunning()) wAction.stop();
+            }
+          }
+
+          // ── CARGO ANIMATION (RAF-based, replaces setInterval) ────────────────
+          if (rData.isAnimatingCargo && rData.cargoAnimDir !== 0 && rData.cargoMesh) {
+            rData.cargoAnimFrame = (rData.cargoAnimFrame || 0) + 1;
+            if (rData.cargoAnimDir === 1) {
+              // Pickup: move cargo inward
+              rData.cargoMesh.position.y -= 0.045;
+              rData.cargoMesh.position.z -= 0.042;
+              if (rData.cargoAnimFrame >= 11) {
+                rData.cargoMesh.position.set(0, 0.38, 0.02);
+                rData.actions['hatch-close']?.reset().setLoop(THREE.LoopOnce).play();
+                rData.actions['hatch-open']?.stop();
+                rData.actions['door-close']?.reset().setLoop(THREE.LoopOnce).play();
+                rData.actions['door-open']?.stop();
+                rData.isAnimatingCargo = false;
+                rData.cargoAnimDir = 0;
+              }
+            } else if (rData.cargoAnimDir === -1) {
+              // Drop: move cargo outward
+              rData.cargoMesh.position.z += 0.05;
+              rData.cargoMesh.position.y -= 0.02;
+              if (rData.cargoAnimFrame >= 11) {
+                rData.cargoMesh.visible = false;
+                rData.cargoMesh.position.set(0, 0.38, 0.02);
+                rData.actions['door-close']?.reset().setLoop(THREE.LoopOnce).play();
+                rData.actions['door-open']?.stop();
+                rData.actions['hatch-close']?.reset().setLoop(THREE.LoopOnce).play();
+                rData.actions['hatch-open']?.stop();
+                rData.isAnimatingCargo = false;
+                rData.cargoAnimDir = 0;
+              }
+            }
           }
         }
       });
@@ -476,13 +838,16 @@ export function Warehouse3DGrid({
       domElem.removeEventListener('click', onClick);
       window.removeEventListener('resize', handleResize);
       if (container) container.innerHTML = '';
+      robotMeshesRef.current = {};
+      wallMeshesRef.current = {};
+      zoneMeshesRef.current = [];
+      pathLinesRef.current = [];
     };
-  }, [isThreeLoaded, grid.rows, grid.cols, viewPreset]);
+  }, [grid.rows, grid.cols, viewPreset]);
 
   // Sync Distinct Industrial Concrete & Metallic Barrier Blocks (Obstacle Walls)
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
+    if (!sceneRef.current) return;
     const scene = sceneRef.current;
 
     const rows = grid.rows || 10;
@@ -584,12 +949,11 @@ export function Warehouse3DGrid({
       scene.add(blockGroup);
       wallMeshesRef.current[key] = blockGroup;
     });
-  }, [grid.blockedCells, grid.rows, grid.cols, isThreeLoaded]);
+  }, [grid.blockedCells, grid.rows, grid.cols]);
 
   // Sync Roller Conveyor Pickup / Delivery Stations
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
+    if (!sceneRef.current) return;
     const scene = sceneRef.current;
 
     const rows = grid.rows || 10;
@@ -706,139 +1070,16 @@ export function Warehouse3DGrid({
       scene.add(dGroup);
       zoneMeshesRef.current.push(dGroup);
     });
-  }, [tasks, grid.rows, grid.cols, isThreeLoaded]);
+  }, [tasks, grid.rows, grid.cols]);
 
-  // Sync Industrial AMRs & Trajectories
+  // LIGHTWEIGHT: Just store latest data in refs and signal RAF to sync
+  // All heavy work (mesh creation, material updates) happens inside the RAF loop,
+  // so it never blocks the frame and never causes stutter.
   useEffect(() => {
-    if (!sceneRef.current || !window.THREE) return;
-    const THREE = window.THREE;
-    const scene = sceneRef.current;
-
-    const rows = grid.rows || 10;
-    const cols = grid.cols || 10;
-    const cellSize = 2.0;
-    const halfWidth = (cols * cellSize) / 2;
-    const halfHeight = (rows * cellSize) / 2;
-
-    const currentRobotIds = new Set((robots || []).map(r => r.id));
-
-    Object.keys(robotMeshesRef.current).forEach(id => {
-      if (!currentRobotIds.has(id)) {
-        scene.remove(robotMeshesRef.current[id].group);
-        delete robotMeshesRef.current[id];
-      }
-    });
-
-    // Professional industrial AMR materials
-    const shellMat = new THREE.MeshStandardMaterial({ color: 0xe8e4de, roughness: 0.25, metalness: 0.12 }); // Off-white industrial shell
-    const chassisMat = new THREE.MeshStandardMaterial({ color: 0x3d3d3d, roughness: 0.35, metalness: 0.7 }); // Dark gunmetal chassis
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xc5c0b8, metalness: 0.6, roughness: 0.2 }); // Brushed aluminum deck
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.7, metalness: 0.3 }); // Dark rubber wheels
-
-    (robots || []).forEach(r => {
-      const targetX = (r.position.x + 0.5) * cellSize - halfWidth;
-      const targetZ = (r.position.y + 0.5) * cellSize - halfHeight;
-
-      if (!robotMeshesRef.current[r.id]) {
-        const rGroup = new THREE.Group();
-        rGroup.userData = { robotId: r.id };
-
-        // Main shell body
-        const shell = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.26, 0.85), shellMat);
-        shell.position.y = 0.15;
-        shell.castShadow = true;
-
-        // Chassis base — gunmetal
-        const base = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.08, 0.8), chassisMat);
-        base.position.y = 0.04;
-        rGroup.add(base);
-
-        // 4 small wheels at corners
-        const wheelGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.04, 12);
-        const wheelPositions = [
-          [0.45, 0.06, 0.38], [-0.45, 0.06, 0.38],
-          [0.45, 0.06, -0.38], [-0.45, 0.06, -0.38]
-        ];
-        wheelPositions.forEach(([wx, wy, wz]) => {
-          const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-          wheel.rotation.x = Math.PI / 2;
-          wheel.position.set(wx, wy, wz);
-          rGroup.add(wheel);
-        });
-
-        // Top deck — brushed aluminum payload platform
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.82), deckMat);
-        deck.position.y = 0.3;
-        deck.castShadow = true;
-
-        // Status LED strip — muted professional tones
-        const statusColor = r.status === 'MOVING' ? 0xd4830a : r.status === 'FAILED' ? 0xc0392b : 0x27ae60;
-        const ledBand = new THREE.Mesh(
-          new THREE.BoxGeometry(1.22, 0.025, 0.87),
-          new THREE.MeshBasicMaterial({ color: statusColor })
-        );
-        ledBand.position.y = 0.23;
-
-        // Lidar sensor — dark industrial housing
-        const lidar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.08, 0.12, 16),
-          new THREE.MeshStandardMaterial({ color: 0x2c3e50, metalness: 0.85, roughness: 0.15 })
-        );
-        lidar.position.set(0.48, 0.15, 0.32);
-
-        rGroup.add(shell, deck, ledBand, lidar);
-
-        // Selection ring — clean cyan for visibility on light floor
-        const selectRing = new THREE.Mesh(
-          new THREE.RingGeometry(0.8, 0.9, 32),
-          new THREE.MeshBasicMaterial({ color: 0x2980b9, side: THREE.DoubleSide })
-        );
-        selectRing.rotation.x = -Math.PI / 2;
-        selectRing.position.y = 0.02;
-        selectRing.name = "selectRing";
-        selectRing.visible = selectedRobotId === r.id;
-        rGroup.add(selectRing);
-
-        rGroup.position.set(targetX, 0, targetZ);
-        scene.add(rGroup);
-
-        robotMeshesRef.current[r.id] = {
-          group: rGroup,
-          lidar: lidar,
-          ledBand: ledBand,
-          selectRing: selectRing,
-          targetPos: { x: targetX, z: targetZ }
-        };
-      } else {
-        const rData = robotMeshesRef.current[r.id];
-        rData.targetPos = { x: targetX, z: targetZ };
-
-        const statusColor = r.status === 'MOVING' ? 0xd4830a : r.status === 'FAILED' ? 0xc0392b : 0x27ae60;
-        rData.ledBand.material.color.setHex(statusColor);
-        rData.selectRing.visible = selectedRobotId === r.id;
-      }
-    });
-
-    pathLinesRef.current.forEach(line => scene.remove(line));
-    pathLinesRef.current = [];
-
-    if (selectedRobotId) {
-      const selRobot = (robots || []).find(r => r.id === selectedRobotId);
-      if (selRobot && selRobot.path && selRobot.path.length > 0) {
-        const points = selRobot.path.map(pt => new THREE.Vector3(
-          (pt.x + 0.5) * cellSize - halfWidth,
-          0.38,
-          (pt.y + 0.5) * cellSize - halfHeight
-        ));
-
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x2980b9, linewidth: 4 });
-        const lineMesh = new THREE.Line(lineGeo, lineMat);
-        scene.add(lineMesh);
-        pathLinesRef.current.push(lineMesh);
-      }
-    }
-  }, [robots, selectedRobotId, grid.rows, grid.cols, isThreeLoaded]);
+    robotsDataRef.current = robots;
+    selectedRobotIdRef.current = selectedRobotId;
+    pendingRobotSyncRef.current = true;
+  }, [robots, selectedRobotId, modelLoaded]);
 
   return (
     <div className="glass-panel" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>

@@ -1,53 +1,156 @@
 import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { 
   RotateCcw, 
   Play, 
   Pause, 
-  ShieldCheck, 
   Battery, 
   Activity, 
-  Cpu, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Zap, 
   Radio, 
-  Wifi, 
-  Thermometer, 
   Compass, 
-  Box
+  Box,
+  Layers,
+  Sliders,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCw,
+  FolderOpen,
+  FolderClosed,
+  Disc
 } from 'lucide-react';
+import { getRobotColor } from './WarehouseGrid';
 
 export function Robot3DViewer({ robot, onClose }) {
   const mountRef = useRef(null);
-  const [isThreeLoaded, setIsThreeLoaded] = useState(!!window.THREE);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [activeTab, setActiveTab] = useState('telemetry'); // 'telemetry' | 'hardware'
+  const autoRotateRef = useRef(true);
+  const resetCameraRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('telemetry'); // 'telemetry' | 'hardware' | 'animations'
+  
+  // Animation State
+  const [activeAnim, setActiveAnim] = useState(null);
+  const [isRolling, setIsRolling] = useState(false);
+  const [doorState, setDoorState] = useState('CLOSED'); // 'OPEN' | 'CLOSED'
+  const [hatchState, setHatchState] = useState('CLOSED'); // 'OPEN' | 'CLOSED'
+
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const animFrameRef = useRef(null);
+  const mixerRef = useRef(null);
+  const actionsRef = useRef({});
+  const loadMeshRef = useRef(null);
+  const bayLightRef = useRef(null);
 
-  // Load Three.js dynamically if not present
+  // Keep autoRotateRef in sync with state
   useEffect(() => {
-    if (window.THREE) {
-      setIsThreeLoaded(true);
+    autoRotateRef.current = autoRotate;
+  }, [autoRotate]);
+
+  // Trigger animation helper
+  const triggerAnimation = (name) => {
+    const actions = actionsRef.current;
+    if (!actions || !actions[name]) return;
+
+    if (name === 'wheel-roll') {
+      const act = actions['wheel-roll'];
+      if (act.isRunning()) {
+        act.stop();
+        setIsRolling(false);
+        setActiveAnim(null);
+      } else {
+        act.setLoop(THREE.LoopRepeat);
+        act.reset().play();
+        setIsRolling(true);
+        setActiveAnim('wheel-roll');
+      }
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-    script.async = true;
-    script.onload = () => setIsThreeLoaded(true);
-    document.head.appendChild(script);
+    if (name === 'door-open') {
+      if (actions['door-close']) actions['door-close'].stop();
+      actions['door-open'].setLoop(THREE.LoopOnce);
+      actions['door-open'].clampWhenFinished = true;
+      actions['door-open'].reset().play();
+      setDoorState('OPEN');
+      setActiveAnim('door-open');
 
-    return () => {};
-  }, []);
+      // Smoothly elevate the payload parcel inside the opened space
+      if (loadMeshRef.current) {
+        let t = 0;
+        const liftInterval = setInterval(() => {
+          t += 0.08;
+          if (loadMeshRef.current) {
+            loadMeshRef.current.position.y = THREE.MathUtils.lerp(0.38, 0.52, Math.min(1, t));
+          }
+          if (t >= 1) clearInterval(liftInterval);
+        }, 30);
+      }
+    } else if (name === 'door-close') {
+      if (actions['door-open']) actions['door-open'].stop();
+      actions['door-close'].setLoop(THREE.LoopOnce);
+      actions['door-close'].clampWhenFinished = true;
+      actions['door-close'].reset().play();
+      setDoorState('CLOSED');
+      setActiveAnim('door-close');
 
-  // Render Photorealistic Metallic Industrial CAD AMR Scene
+      // Lower the payload parcel back into the bay cavity as door shuts
+      if (loadMeshRef.current) {
+        let t = 0;
+        const lowerInterval = setInterval(() => {
+          t += 0.08;
+          if (loadMeshRef.current) {
+            loadMeshRef.current.position.y = THREE.MathUtils.lerp(0.52, 0.38, Math.min(1, t));
+          }
+          if (t >= 1) clearInterval(lowerInterval);
+        }, 30);
+      }
+    } else if (name === 'hatch-open') {
+      if (actions['hatch-close']) actions['hatch-close'].stop();
+      actions['hatch-open'].setLoop(THREE.LoopOnce);
+      actions['hatch-open'].clampWhenFinished = true;
+      actions['hatch-open'].reset().play();
+      setHatchState('OPEN');
+      setActiveAnim('hatch-open');
+
+      // Slide cargo slightly forward towards hatch port
+      if (loadMeshRef.current) {
+        let t = 0;
+        const slideInterval = setInterval(() => {
+          t += 0.08;
+          if (loadMeshRef.current) {
+            loadMeshRef.current.position.z = THREE.MathUtils.lerp(0.02, 0.16, Math.min(1, t));
+          }
+          if (t >= 1) clearInterval(slideInterval);
+        }, 30);
+      }
+    } else if (name === 'hatch-close') {
+      if (actions['hatch-open']) actions['hatch-open'].stop();
+      actions['hatch-close'].setLoop(THREE.LoopOnce);
+      actions['hatch-close'].clampWhenFinished = true;
+      actions['hatch-close'].reset().play();
+      setHatchState('CLOSED');
+      setActiveAnim('hatch-close');
+
+      // Slide cargo back into center bay
+      if (loadMeshRef.current) {
+        let t = 0;
+        const returnInterval = setInterval(() => {
+          t += 0.08;
+          if (loadMeshRef.current) {
+            loadMeshRef.current.position.z = THREE.MathUtils.lerp(0.16, 0.02, Math.min(1, t));
+          }
+          if (t >= 1) clearInterval(returnInterval);
+        }, 30);
+      }
+    }
+  };
+
+  // Render Photorealistic 3D AMR CAD Scene using model.glb
   useEffect(() => {
-    if (!isThreeLoaded || !mountRef.current || !window.THREE) return;
-
-    const THREE = window.THREE;
     const container = mountRef.current;
+    if (!container) return;
+
     const width = container.clientWidth;
     const height = container.clientHeight;
 
@@ -57,27 +160,27 @@ export function Robot3DViewer({ robot, onClose }) {
 
     // 2. Camera setup - isometric CAD view angle
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 1000);
-    camera.position.set(5.0, 3.4, 6.0);
+    camera.position.set(4.8, 3.2, 5.6);
 
-    // 3. Renderer with high PBR quality, tone mapping, & soft shadows
+    // 3. Renderer with high PBR quality & soft shadows
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.3;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Studio Specular Environment Lighting (Clean Metallic Reflections)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // 4. Studio Specular Environment Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
     // Main Studio Key Light
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
     keyLight.position.set(7, 14, 9);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 2048;
@@ -85,357 +188,253 @@ export function Robot3DViewer({ robot, onClose }) {
     keyLight.shadow.bias = -0.00008;
     scene.add(keyLight);
 
-    // Metallic Specular Rim Light (Cool Blue-Steel)
-    const specularRimLight = new THREE.DirectionalLight(0x94a3b8, 0.9);
+    // Specular Rim Light
+    const specularRimLight = new THREE.DirectionalLight(0xb0bec5, 1.3);
     specularRimLight.position.set(-8, 6, -7);
     scene.add(specularRimLight);
 
-    // Underbody Metallic Bounce
-    const bounceLight = new THREE.DirectionalLight(0x475569, 0.4);
-    bounceLight.position.set(0, -6, 0);
-    scene.add(bounceLight);
-
     // Status Glow Color
-    const statusColorHex = robot.status === 'MOVING' ? 0xc2410c : 
-                           robot.status === 'WAITING' ? 0xd97706 : 
-                           robot.status === 'FAILED' ? 0xd97706 : 0x059669;
+    const statusColorHex = robot.status === 'MOVING' ? 0xea580c : 
+                           robot.status === 'WAITING' ? 0x3b82f6 : 
+                           robot.status === 'FAILED' ? 0xef4444 : 0x10b981;
 
-    const underbodyGlow = new THREE.PointLight(statusColorHex, 2.2, 5.0);
-    underbodyGlow.position.set(0, 0.08, 0);
+    const underbodyGlow = new THREE.PointLight(statusColorHex, 2.8, 6.0);
+    underbodyGlow.position.set(0, 0.1, 0);
     scene.add(underbodyGlow);
 
     // 5. Floor & Holographic CAD Grid
-    const gridHelper = new THREE.GridHelper(12, 24, 0xc2410c, 0x3f3f46);
+    const gridHelper = new THREE.GridHelper(12, 24, 0xc2410c, 0x2a2118);
     gridHelper.position.y = -0.4;
     scene.add(gridHelper);
 
     const shadowPlaneGeo = new THREE.PlaneGeometry(12, 12);
-    const shadowPlaneMat = new THREE.ShadowMaterial({ opacity: 0.4 });
+    const shadowPlaneMat = new THREE.ShadowMaterial({ opacity: 0.45 });
     const shadowPlane = new THREE.Mesh(shadowPlaneGeo, shadowPlaneMat);
     shadowPlane.rotation.x = -Math.PI / 2;
-    shadowPlane.position.y = -0.39;
+    shadowPlane.position.y = -0.395;
     shadowPlane.receiveShadow = true;
     scene.add(shadowPlane);
 
-    // 6. BUILD PHOTOREALISTIC INDUSTRIAL METALLIC AMR ROBOT
+    // 6. Robot Model Container Group
     const robotGroup = new THREE.Group();
-
-    // PBR PURE METALLIC INDUSTRIAL MATERIALS
-    const spaceGrayMetallic = new THREE.MeshStandardMaterial({
-      color: 0x3f3f46,
-      metalness: 0.92,
-      roughness: 0.18
-    });
-
-    const brushedTitanium = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      metalness: 0.96,
-      roughness: 0.12
-    });
-
-    const darkGraphiteMat = new THREE.MeshStandardMaterial({
-      color: 0x18181b,
-      metalness: 0.7,
-      roughness: 0.35
-    });
-
-    const deepBronzeMat = new THREE.MeshStandardMaterial({
-      color: 0x9a3412,
-      metalness: 0.82,
-      roughness: 0.22
-    });
-
-    const smokedGlassMat = new THREE.MeshStandardMaterial({
-      color: 0x09090b,
-      metalness: 0.98,
-      roughness: 0.05,
-      transparent: true,
-      opacity: 0.9
-    });
-
-    const statusLedMat = new THREE.MeshBasicMaterial({ color: statusColorHex });
-    const fastenerMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.1 });
-
-    // A. Lower Heavy Machinery Base Chassis (Dark Graphite Steel)
-    const baseChassis = new THREE.Mesh(new THREE.BoxGeometry(2.52, 0.18, 1.72), darkGraphiteMat);
-    baseChassis.position.y = -0.02;
-    baseChassis.castShadow = true;
-    baseChassis.receiveShadow = true;
-    robotGroup.add(baseChassis);
-
-    // B. Main Outer Shell (Anodized Space Gray Metallic Alloy)
-    const mainShell = new THREE.Mesh(new THREE.BoxGeometry(2.65, 0.32, 1.85), spaceGrayMetallic);
-    mainShell.position.y = 0.15;
-    mainShell.castShadow = true;
-    mainShell.receiveShadow = true;
-    robotGroup.add(mainShell);
-
-    // C. Chamfered Metallic Corner Guards (4 Heavy Corner Bumpers - Deep Bronze Metallic Accent)
-    const cornerGuardGeo = new THREE.BoxGeometry(0.36, 0.34, 0.36);
-    const cornerPositions = [
-      [1.21, 0.15, 0.81],
-      [-1.21, 0.15, 0.81],
-      [1.21, 0.15, -0.81],
-      [-1.21, 0.15, -0.81]
-    ];
-
-    cornerPositions.forEach(([x, y, z]) => {
-      const guard = new THREE.Mesh(cornerGuardGeo, deepBronzeMat);
-      guard.position.set(x, y, z);
-      guard.castShadow = true;
-      robotGroup.add(guard);
-    });
-
-    // D. Mechanical Side Ventilation Grilles & Hex Rivets
-    const ventMat = new THREE.MeshStandardMaterial({ color: 0x09090b, metalness: 0.9, roughness: 0.3 });
-    const ventLeft = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.02), ventMat);
-    ventLeft.position.set(0, 0.15, 0.935);
-    const ventRight = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.02), ventMat);
-    ventRight.position.set(0, 0.15, -0.935);
-    robotGroup.add(ventLeft, ventRight);
-
-    // Steel Fastener Bolts along seam
-    const rivetGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.03, 8);
-    for (let x = -1.1; x <= 1.1; x += 0.45) {
-      const r1 = new THREE.Mesh(rivetGeo, fastenerMat);
-      r1.position.set(x, 0.28, 0.91);
-      const r2 = new THREE.Mesh(rivetGeo, fastenerMat);
-      r2.position.set(x, 0.28, -0.91);
-      robotGroup.add(r1, r2);
-    }
-
-    // E. Continuous Recessed LED Status Ring
-    const ledRing = new THREE.Mesh(new THREE.BoxGeometry(2.68, 0.04, 1.88), statusLedMat);
-    ledRing.position.y = 0.24;
-    robotGroup.add(ledRing);
-
-    // F. 100% FLAT Machined Brushed Titanium Top Load Deck
-    const topDeck = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.06, 1.82), brushedTitanium);
-    topDeck.position.y = 0.33;
-    topDeck.castShadow = true;
-    topDeck.receiveShadow = true;
-    robotGroup.add(topDeck);
-
-    // Flush T-Slot Mounting Rail Channels (Recessed into Top Deck)
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.95, roughness: 0.2 });
-    const rail1 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.01, 0.06), railMat);
-    rail1.position.set(0, 0.362, 0.55);
-    const rail2 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.01, 0.06), railMat);
-    rail2.position.set(0, 0.362, -0.55);
-    robotGroup.add(rail1, rail2);
-
-    // 4 Flush Anti-Slip Rubber Friction Grip Pads
-    const padGeo = new THREE.BoxGeometry(0.8, 0.008, 0.55);
-    const padPositions = [
-      [0.7, 0.364, 0.45],
-      [-0.7, 0.364, 0.45],
-      [0.7, 0.364, -0.45],
-      [-0.7, 0.364, -0.45]
-    ];
-
-    padPositions.forEach(([x, y, z]) => {
-      const pad = new THREE.Mesh(padGeo, darkGraphiteMat);
-      pad.position.set(x, y, z);
-      robotGroup.add(pad);
-    });
-
-    // G. Embedded Flush Diagonal Safety Corner LiDARs (Smoked Glass Housing)
-    const createFlushLidar = (x, z, angle) => {
-      const podGroup = new THREE.Group();
-      podGroup.position.set(x, 0.12, z);
-      podGroup.rotation.y = angle;
-
-      const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.2, 24), smokedGlassMat);
-      housing.castShadow = true;
-
-      const laserEmitter = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.14), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
-      laserEmitter.position.set(0.07, 0.02, 0);
-
-      podGroup.add(housing, laserEmitter);
-      return { podGroup, laserEmitter };
-    };
-
-    const lidar1 = createFlushLidar(1.18, 0.78, 0);
-    const lidar2 = createFlushLidar(-1.18, -0.78, Math.PI);
-    robotGroup.add(lidar1.podGroup, lidar2.podGroup);
-
-    // H. Recessed Underbody Drive Wheels & Corner Swivel Casters
-    const wheelTreadMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.85 });
-    const wheelRimMat = new THREE.MeshStandardMaterial({ color: 0x71717a, metalness: 0.95, roughness: 0.15 });
-
-    const driveWheels = [];
-
-    const dwLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.16, 24), wheelTreadMat);
-    dwLeft.rotation.x = Math.PI / 2;
-    dwLeft.position.set(0, -0.06, 0.78);
-
-    const dwRimLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.17, 16), wheelRimMat);
-    dwRimLeft.rotation.x = Math.PI / 2;
-    dwRimLeft.position.set(0, -0.06, 0.78);
-
-    const dwRight = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.16, 24), wheelTreadMat);
-    dwRight.rotation.x = Math.PI / 2;
-    dwRight.position.set(0, -0.06, -0.78);
-
-    const dwRimRight = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.17, 16), wheelRimMat);
-    dwRimRight.rotation.x = Math.PI / 2;
-    dwRimRight.position.set(0, -0.06, -0.78);
-
-    robotGroup.add(dwLeft, dwRimLeft, dwRight, dwRimRight);
-    driveWheels.push(dwLeft, dwRight);
-
-    // Corner Passive Swivel Casters
-    const casterPositions = [
-      [0.95, -0.2, 0.65],
-      [-0.95, -0.2, 0.65],
-      [0.95, -0.2, -0.65],
-      [-0.95, -0.2, -0.65]
-    ];
-
-    casterPositions.forEach(([x, y, z]) => {
-      const caster = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), wheelRimMat);
-      caster.position.set(x, y, z);
-      robotGroup.add(caster);
-    });
-
-    // I. Embedded Digital Telemetry Displays (Front & Rear)
-    const oledMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
-    const oledFront = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.11, 0.42), oledMat);
-    oledFront.position.set(1.33, 0.15, 0);
-    const oledRear = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.11, 0.42), oledMat);
-    oledRear.position.set(-1.33, 0.15, 0);
-    robotGroup.add(oledFront, oledRear);
-
-    // J. REALISTIC HEAVY INDUSTRIAL CARGO PAYLOAD (Placed Flat on Top Deck)
-    if (robot.taskId) {
-      const payloadGroup = new THREE.Group();
-      payloadGroup.position.set(0, 0.36, 0);
-
-      // Industrial Steel & Composite Container Crate
-      const crateMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8, roughness: 0.3 });
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.85, 1.2), crateMat);
-      crate.position.y = 0.435;
-      crate.castShadow = true;
-      payloadGroup.add(crate);
-
-      // Stainless Steel Corner Protectors
-      const metalCornerMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.95, roughness: 0.1 });
-      const createCorner = (cx, cz) => {
-        const c = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.87, 0.08), metalCornerMat);
-        c.position.set(cx, 0.435, cz);
-        return c;
-      };
-
-      payloadGroup.add(createCorner(0.8, 0.6));
-      payloadGroup.add(createCorner(-0.8, 0.6));
-      payloadGroup.add(createCorner(0.8, -0.6));
-      payloadGroup.add(createCorner(-0.8, -0.6));
-
-      // Barcode shipping decal
-      const decal = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.36), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      decal.position.set(0.81, 0.435, 0);
-      payloadGroup.add(decal);
-
-      robotGroup.add(payloadGroup);
-    }
-
     scene.add(robotGroup);
 
-    // 7. Smooth Orbit Drag Controls & Touch Rotation
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let spherical = { radius: 7.5, theta: Math.PI / 4, phi: Math.PI / 3.2 };
+    // 7. Load GLTF model.glb and apply theme-appropriate materials
+    const loader = new GLTFLoader();
+    const robotColor = getRobotColor(robot.id);
 
-    const updateCameraPosition = () => {
-      spherical.phi = Math.max(0.1, Math.min(Math.PI / 2 - 0.02, spherical.phi));
-      spherical.radius = Math.max(4.0, Math.min(14, spherical.radius));
+    loader.load(
+      '/model.glb',
+      (gltf) => {
+        const model = gltf.scene;
+
+        // Scale to fit isometric CAD viewport comfortably (bounding size: ~1.7m x 1.9m x 2.2m)
+        model.scale.set(2.4, 2.4, 2.4);
+        model.position.set(0, -0.4, 0);
+
+        // Customize materials to HIGH-CONTRAST INDUSTRIAL GREY for maximum visibility
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+
+            if (child.material) {
+              const matName = child.material.name;
+
+              if (matName === 'orange') {
+                // Signature Bumper & Trim: vibrant brand orange
+                child.material = new THREE.MeshStandardMaterial({
+                  color: new THREE.Color(robotColor.bg || '#ea580c'),
+                  metalness: 0.65,
+                  roughness: 0.32,
+                  emissive: new THREE.Color(robotColor.bg || '#ea580c'),
+                  emissiveIntensity: 0.16
+                });
+              } else if (matName === 'shell') {
+                // Outer aerodynamic shell: HIGH-VISIBILITY INDUSTRIAL SLEEK GREY
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x9ca3af, // Crisp, highly visible medium-light metallic grey
+                  metalness: 0.65,
+                  roughness: 0.3
+                });
+              } else if (matName === 'glow') {
+                // Headlight / sensor status LED glow
+                child.material = new THREE.MeshStandardMaterial({
+                  color: statusColorHex,
+                  emissive: statusColorHex,
+                  emissiveIntensity: 2.4,
+                  roughness: 0.15
+                });
+              } else if (matName === 'glass') {
+                child.material = new THREE.MeshPhysicalMaterial({
+                  color: 0x1e293b,
+                  transparent: true,
+                  opacity: 0.75,
+                  roughness: 0.1,
+                  metalness: 0.2
+                });
+              } else if (matName === 'steel') {
+                // Polished metallic steel
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0xcfd8dc,
+                  metalness: 0.92,
+                  roughness: 0.18
+                });
+              } else if (matName === 'graphite') {
+                // Visible slate grey accent
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x475569,
+                  metalness: 0.6,
+                  roughness: 0.38
+                });
+              } else if (matName === 'rubber') {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0x181a1d,
+                  metalness: 0.1,
+                  roughness: 0.85
+                });
+              }
+            }
+          }
+        });
+
+        // 8. Internal Cargo Bay Cavity (Space inside for the load)
+        const bayLinerMat = new THREE.MeshStandardMaterial({
+          color: 0x1f2937, // Dark interior recessed compartment
+          roughness: 0.6,
+          metalness: 0.7,
+          side: THREE.BackSide
+        });
+        const bayLiner = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.62), bayLinerMat);
+        bayLiner.position.set(0, 0.45, 0.02);
+        model.add(bayLiner);
+
+        // Internal Cavity LED Light
+        const bayLight = new THREE.PointLight(0xffedd5, 1.8, 1.8);
+        bayLight.position.set(0, 0.55, 0.02);
+        bayLightRef.current = bayLight;
+        model.add(bayLight);
+
+        // 9. Industrial Cargo Payload Parcel (The load inside)
+        const loadGroup = new THREE.Group();
+        loadGroup.position.set(0, 0.38, 0.02);
+
+        const loadGeo = new THREE.BoxGeometry(0.38, 0.28, 0.42);
+        const loadMat = new THREE.MeshStandardMaterial({
+          color: 0xc27803, // Corrugated industrial cardboard parcel
+          roughness: 0.75,
+          metalness: 0.06
+        });
+        const loadBox = new THREE.Mesh(loadGeo, loadMat);
+        loadBox.castShadow = true;
+        loadBox.receiveShadow = true;
+        loadGroup.add(loadBox);
+
+        // Orange brand security tape
+        const tapeMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.385, 0.05, 0.425),
+          new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.35 })
+        );
+        loadGroup.add(tapeMesh);
+
+        // Shipping barcode / destination label on top
+        const labelMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.18, 0.12),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+        );
+        labelMesh.rotation.x = -Math.PI / 2;
+        labelMesh.position.y = 0.142;
+        loadGroup.add(labelMesh);
+
+        loadMeshRef.current = loadGroup;
+        model.add(loadGroup);
+
+        robotGroup.add(model);
+
+        // Setup Animation Mixer with all 5 GLB animations
+        const mixer = new THREE.AnimationMixer(model);
+        mixerRef.current = mixer;
+
+        const actions = {};
+        (gltf.animations || []).forEach((clip) => {
+          const act = mixer.clipAction(clip);
+          actions[clip.name] = act;
+        });
+        actionsRef.current = actions;
+      },
+      undefined,
+      (err) => console.error('Failed to load /model.glb:', err)
+    );
+
+    // 8. Interactive Camera Orbit Controls (Spherical coordinates)
+    const spherical = { radius: 6.8, theta: Math.PI / 4, phi: Math.PI / 3.2 };
+    const targetSpherical = { radius: 6.8, theta: Math.PI / 4, phi: Math.PI / 3.2 };
+    let isDragging = false;
+    let prevMouse = { x: 0, y: 0 };
+
+    const updateCamera = () => {
+      spherical.radius += (targetSpherical.radius - spherical.radius) * 0.1;
+      spherical.theta += (targetSpherical.theta - spherical.theta) * 0.1;
+      spherical.phi += (targetSpherical.phi - spherical.phi) * 0.1;
+
+      spherical.phi = Math.max(0.15, Math.min(Math.PI / 2.05, spherical.phi));
+      spherical.radius = Math.max(3.2, Math.min(14.0, spherical.radius));
 
       camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
       camera.position.y = spherical.radius * Math.cos(spherical.phi);
       camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
-      camera.lookAt(0, 0.3, 0);
+      camera.lookAt(0, 0.45, 0);
     };
 
-    updateCameraPosition();
+    const domElem = renderer.domElement;
 
     const onMouseDown = (e) => {
       isDragging = true;
-      previousMousePosition = { x: e.clientX, y: e.clientY };
+      prevMouse = { x: e.clientX, y: e.clientY };
     };
 
     const onMouseMove = (e) => {
       if (!isDragging) return;
-      const deltaX = e.clientX - previousMousePosition.x;
-      const deltaY = e.clientY - previousMousePosition.y;
-
-      spherical.theta -= deltaX * 0.007;
-      spherical.phi -= deltaY * 0.007;
-
-      updateCameraPosition();
-      previousMousePosition = { x: e.clientX, y: e.clientY };
+      const dx = e.clientX - prevMouse.x;
+      const dy = e.clientY - prevMouse.y;
+      targetSpherical.theta -= dx * 0.007;
+      targetSpherical.phi -= dy * 0.007;
+      prevMouse = { x: e.clientX, y: e.clientY };
     };
 
     const onMouseUp = () => { isDragging = false; };
-
     const onWheel = (e) => {
       e.preventDefault();
-      spherical.radius += e.deltaY * 0.005;
-      updateCameraPosition();
+      targetSpherical.radius += e.deltaY * 0.005;
     };
 
-    const domElem = renderer.domElement;
+    resetCameraRef.current = () => {
+      targetSpherical.radius = 6.8;
+      targetSpherical.theta = Math.PI / 4;
+      targetSpherical.phi = Math.PI / 3.2;
+    };
+
     domElem.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     domElem.addEventListener('wheel', onWheel, { passive: false });
 
-    const onTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        isDragging = true;
-        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
+    // 9. Render & Animation Loop
+    const clock = new THREE.Clock();
 
-    const onTouchMove = (e) => {
-      if (isDragging && e.touches.length === 1) {
-        const deltaX = e.touches[0].clientX - previousMousePosition.x;
-        const deltaY = e.touches[0].clientY - previousMousePosition.y;
-
-        spherical.theta -= deltaX * 0.007;
-        spherical.phi -= deltaY * 0.007;
-
-        updateCameraPosition();
-        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
-
-    const onTouchEnd = () => { isDragging = false; };
-
-    domElem.addEventListener('touchstart', onTouchStart);
-    domElem.addEventListener('touchmove', onTouchMove);
-    domElem.addEventListener('touchend', onTouchEnd);
-
-    // 8. Continuous Render Loop
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
 
-      // Internal laser optics spinning
-      lidar1.laserEmitter.rotation.y += 0.14;
-      lidar2.laserEmitter.rotation.y += 0.14;
-
-      // Auto-orbit camera if enabled
-      if (autoRotate && !isDragging) {
-        spherical.theta += 0.004;
-        updateCameraPosition();
+      const delta = clock.getDelta();
+      if (mixerRef.current) {
+        mixerRef.current.update(delta);
       }
 
-      // Rotate wheels when moving
-      if (robot.status === 'MOVING') {
-        driveWheels.forEach(w => {
-          w.rotation.z += 0.12;
-        });
+      if (autoRotateRef.current && !isDragging) {
+        targetSpherical.theta += 0.004;
       }
 
+      updateCamera();
       renderer.render(scene, camera);
     };
 
@@ -453,46 +452,44 @@ export function Robot3DViewer({ robot, onClose }) {
     window.addEventListener('resize', handleResize);
 
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener('resize', handleResize);
       domElem.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       domElem.removeEventListener('wheel', onWheel);
-      domElem.removeEventListener('touchstart', onTouchStart);
-      domElem.removeEventListener('touchmove', onTouchMove);
-      domElem.removeEventListener('touchend', onTouchEnd);
-      window.removeEventListener('resize', handleResize);
-      if (container) container.innerHTML = '';
+
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
     };
-  }, [isThreeLoaded, robot, autoRotate]);
+  }, [robot.id, robot.status]);
 
   return (
     <div 
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(9, 9, 11, 0.88)',
-        backdropFilter: 'blur(16px)',
-        zIndex: 1100,
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.85)',
+        backdropFilter: 'blur(10px)',
+        zIndex: 10000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 24
+        padding: '24px'
       }}
       onClick={onClose}
     >
       <div 
         style={{
-          width: '100%',
-          maxWidth: 1180,
+          width: '92vw',
+          maxWidth: 1280,
           height: '88vh',
+          maxHeight: 840,
           background: 'var(--bg-card)',
           border: '1px solid var(--border-light)',
           borderRadius: 16,
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6)',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column'
@@ -544,7 +541,7 @@ export function Robot3DViewer({ robot, onClose }) {
                 </span>
               </div>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                Space Gray Anodized Alloy • Polished Titanium Deck • P2P Mesh Node
+                Aerodynamic Composite Body • 5 Integrated Kinematic Actuators • P2P Mesh Node
               </p>
             </div>
           </div>
@@ -564,7 +561,87 @@ export function Robot3DViewer({ robot, onClose }) {
           <div style={{ position: 'relative', background: '#09090b', display: 'flex', flexDirection: 'column' }}>
             <div ref={mountRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
 
-            {/* Viewport Overlay Controls */}
+            {/* Viewport Overlay: Quick Animation Controller Dock */}
+            <div 
+              style={{
+                position: 'absolute',
+                top: 16,
+                left: 16,
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 8,
+                background: 'rgba(15, 23, 42, 0.88)',
+                backdropFilter: 'blur(10px)',
+                padding: '8px 12px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.12)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+              }}
+            >
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--brand-orange)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>
+                Actuators:
+              </span>
+
+              {/* 1. Wheel Roll */}
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  background: isRolling ? 'var(--brand-orange)' : 'rgba(255,255,255,0.08)',
+                  color: '#fff',
+                  border: isRolling ? '1px solid var(--brand-orange)' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 6
+                }}
+                onClick={() => triggerAnimation('wheel-roll')}
+              >
+                <Disc size={13} style={{ animation: isRolling ? 'spin 1s linear infinite' : 'none' }} />
+                <span>{isRolling ? 'Rolling (ON)' : 'Roll Wheels'}</span>
+              </button>
+
+              {/* 2. Door Open / Close */}
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  background: doorState === 'OPEN' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.08)',
+                  color: doorState === 'OPEN' ? '#10b981' : '#fff',
+                  border: doorState === 'OPEN' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 6
+                }}
+                onClick={() => triggerAnimation(doorState === 'OPEN' ? 'door-close' : 'door-open')}
+              >
+                {doorState === 'OPEN' ? <FolderOpen size={13} /> : <FolderClosed size={13} />}
+                <span>{doorState === 'OPEN' ? 'Close Door' : 'Open Door'}</span>
+              </button>
+
+              {/* 3. Hatch Open / Close */}
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  background: hatchState === 'OPEN' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.08)',
+                  color: hatchState === 'OPEN' ? '#3b82f6' : '#fff',
+                  border: hatchState === 'OPEN' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 6
+                }}
+                onClick={() => triggerAnimation(hatchState === 'OPEN' ? 'hatch-close' : 'hatch-open')}
+              >
+                <Box size={13} />
+                <span>{hatchState === 'OPEN' ? 'Close Hatch' : 'Open Hatch'}</span>
+              </button>
+            </div>
+
+            {/* Bottom Viewport Controls */}
             <div 
               style={{
                 position: 'absolute',
@@ -583,12 +660,41 @@ export function Robot3DViewer({ robot, onClose }) {
               <button
                 type="button"
                 className="btn btn-outline"
-                style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#fff' }}
-                onClick={() => setAutoRotate(!autoRotate)}
-                title="Toggle 3D Camera Orbit"
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  color: '#fff',
+                  background: autoRotate ? 'rgba(234, 88, 12, 0.15)' : 'transparent',
+                  borderColor: autoRotate ? 'var(--brand-orange)' : 'rgba(255,255,255,0.2)'
+                }}
+                onClick={() => {
+                  setAutoRotate(prev => {
+                    autoRotateRef.current = !prev;
+                    return !prev;
+                  });
+                }}
+                title={autoRotate ? "Stop 3D Camera Rotation" : "Start 3D Camera Rotation"}
               >
                 {autoRotate ? <Pause size={14} color="var(--brand-orange)" /> : <Play size={14} color="#10b981" />}
-                <span>{autoRotate ? 'Pause Orbit' : 'Rotate 3D'}</span>
+                <span>{autoRotate ? 'Stop Rotation' : 'Rotate 3D'}</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{
+                  padding: '5px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: '#e4e4e7',
+                  borderColor: 'rgba(255,255,255,0.15)'
+                }}
+                onClick={() => resetCameraRef.current && resetCameraRef.current()}
+                title="Reset Camera Angle to Default"
+              >
+                <RotateCcw size={13} color="var(--brand-orange)" />
+                <span>Reset Angle</span>
               </button>
 
               <div style={{ color: '#a1a1aa', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8, borderLeft: '1px solid #3f3f46', fontWeight: 600 }}>
@@ -601,7 +707,7 @@ export function Robot3DViewer({ robot, onClose }) {
             <div 
               style={{
                 position: 'absolute',
-                top: 16,
+                bottom: 16,
                 right: 16,
                 background: 'rgba(24, 24, 27, 0.75)',
                 padding: '6px 12px',
@@ -613,11 +719,11 @@ export function Robot3DViewer({ robot, onClose }) {
                 fontWeight: 700
               }}
             >
-              MACHINED TITANIUM DECK • PAYLOAD: 250 KG • SPEED: 2.0 M/S
+              MODEL.GLB • 5 KINEMATIC CLIPS • PAYLOAD: 250 KG
             </div>
           </div>
 
-          {/* Right Side Telemetry Panel */}
+          {/* Right Side Telemetry & Controls Panel */}
           <div 
             style={{
               padding: 24,
@@ -650,6 +756,23 @@ export function Robot3DViewer({ robot, onClose }) {
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab('animations')}
+                style={{
+                  flex: 1,
+                  padding: '6px',
+                  borderRadius: 6,
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  background: activeTab === 'animations' ? 'var(--brand-orange)' : 'transparent',
+                  color: activeTab === 'animations' ? '#ffffff' : 'var(--text-secondary)'
+                }}
+              >
+                Actuators (5)
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab('hardware')}
                 style={{
                   flex: 1,
@@ -667,9 +790,10 @@ export function Robot3DViewer({ robot, onClose }) {
               </button>
             </div>
 
-            {activeTab === 'telemetry' ? (
+            {/* TAB 1: TELEMETRY */}
+            {activeTab === 'telemetry' && (
               <>
-                {/* Battery & System Health Cards */}
+                {/* Battery & Health Cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="glass-panel" style={{ padding: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>
@@ -740,56 +864,170 @@ export function Robot3DViewer({ robot, onClose }) {
                         <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Status Phase:</span>
                         <span className="badge-status badge-moving">{robot.stage || 'IN_PROGRESS'}</span>
                       </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Arbitration Priority:</span>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>{robot.effectivePriority?.toFixed(1) || '1.0'}</span>
-                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center', padding: '12px 0' }}>
-                      Flat deck empty. Robot idling at docking cell.
+                    <div style={{ textAlign: 'center', padding: '12px', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600 }}>
+                      No active task currently assigned to this AMR.
                     </div>
                   )}
                 </div>
               </>
-            ) : (
-              /* Hardware Component Diagnostics Tab */
-              <div className="glass-panel" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Cpu size={14} color="var(--brand-orange)" />
-                  Industrial Metallic CAD Architecture
-                </h4>
+            )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.8rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Chassis Material</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>Space Gray Anodized Alloy</span>
+            {/* TAB 2: ANIMATIONS & ACTUATORS */}
+            {activeTab === 'animations' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="glass-panel" style={{ padding: 16 }}>
+                  <h4 style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Sliders size={15} color="var(--brand-orange)" />
+                    Interactive Kinematic Actuators
+                  </h4>
+                  <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 14 }}>
+                    Test the 5 real-time rigged animations embedded in <code style={{ color: 'var(--brand-orange)', fontFamily: 'var(--font-mono)' }}>model.glb</code>.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Wheel Roll Animation */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border-light)' }}>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)' }}>Wheel Roll Mechanism</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>4-wheel synchronized drive axis</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => triggerAnimation('wheel-roll')}
+                        className="btn"
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          background: isRolling ? 'var(--brand-orange)' : 'var(--bg-card)',
+                          color: isRolling ? '#fff' : 'var(--text-primary)',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: 6
+                        }}
+                      >
+                        <Disc size={14} style={{ animation: isRolling ? 'spin 1s linear infinite' : 'none' }} />
+                        <span>{isRolling ? 'Stop Roll' : 'Roll Wheels'}</span>
+                      </button>
+                    </div>
+
+                    {/* Top Door Open / Close */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border-light)' }}>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)' }}>Top Cargo Lid / Door</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Status: <b style={{ color: doorState === 'OPEN' ? '#10b981' : 'var(--text-secondary)' }}>{doorState}</b></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => triggerAnimation('door-open')}
+                          className="btn"
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: doorState === 'OPEN' ? 'rgba(16, 185, 129, 0.2)' : 'var(--bg-card)',
+                            color: doorState === 'OPEN' ? '#10b981' : 'var(--text-primary)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: 6
+                          }}
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerAnimation('door-close')}
+                          className="btn"
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: doorState === 'CLOSED' ? 'rgba(234, 88, 12, 0.2)' : 'var(--bg-card)',
+                            color: doorState === 'CLOSED' ? 'var(--brand-orange)' : 'var(--text-primary)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: 6
+                          }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Front Hatch Open / Close */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border-light)' }}>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)' }}>Front Loading Hatch</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Status: <b style={{ color: hatchState === 'OPEN' ? '#3b82f6' : 'var(--text-secondary)' }}>{hatchState}</b></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => triggerAnimation('hatch-open')}
+                          className="btn"
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: hatchState === 'OPEN' ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-card)',
+                            color: hatchState === 'OPEN' ? '#3b82f6' : 'var(--text-primary)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: 6
+                          }}
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerAnimation('hatch-close')}
+                          className="btn"
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: hatchState === 'CLOSED' ? 'rgba(234, 88, 12, 0.2)' : 'var(--bg-card)',
+                            color: hatchState === 'CLOSED' ? 'var(--brand-orange)' : 'var(--text-primary)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: 6
+                          }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                </div>
+              </div>
+            )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Deck Plate</span>
-                    <span style={{ color: 'var(--status-emerald)', fontWeight: 800 }}>Polished Machined Titanium</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Drive Motors</span>
-                    <span style={{ color: 'var(--status-emerald)', fontWeight: 800 }}>Dual BLDC Differential</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Safety Optics</span>
-                    <span style={{ color: 'var(--status-emerald)', fontWeight: 800 }}>Dual Smoked Glass LiDARs</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>P2P Mesh Transceiver</span>
-                    <span style={{ color: 'var(--status-emerald)', fontWeight: 800 }}>Ultra-Wideband 5.8 GHz</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Core Temp</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>37.8 °C (Normal)</span>
+            {/* TAB 3: HARDWARE SPECS */}
+            {activeTab === 'hardware' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="glass-panel" style={{ padding: 16 }}>
+                  <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
+                    Mechanical & Sensor Suite
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Drive Architecture:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>4WD Independent Steer-Drive</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Payload Capacity:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>250 kg (550 lbs)</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>LiDAR Coverage:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>360° Solid-State Dual Array</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Max Acceleration:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>2.0 m/s²</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Battery Cell:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>48V 60Ah LiFePO4 Hot-Swap</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -800,3 +1038,5 @@ export function Robot3DViewer({ robot, onClose }) {
     </div>
   );
 }
+
+export default Robot3DViewer;

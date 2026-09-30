@@ -67,7 +67,17 @@ export function Navbar({ currentView, setCurrentView, theme, toggleTheme, robotC
               <span style={{ fontWeight: 900, fontSize: '1.05rem', letterSpacing: '0.05em', color: 'var(--text-primary)' }}>
                 ROBONEX
               </span>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', display: 'inline-block' }} />
+              <span 
+                className={connected ? 'dot-connected' : ''}
+                style={{ 
+                  width: 7, 
+                  height: 7, 
+                  borderRadius: '50%', 
+                  background: connected ? '#10b981' : '#ef4444', 
+                  display: 'inline-block',
+                  transition: 'background 0.3s ease'
+                }} 
+              />
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.02em' }}>
               Decentralized AMR Swarm
@@ -225,17 +235,19 @@ export function Navbar({ currentView, setCurrentView, theme, toggleTheme, robotC
             <span>P2P: <strong style={{ color: 'var(--text-primary)' }}>{connected ? 'Active' : 'Offline'}</strong></span>
           </div>
 
-          {/* Theme Toggle Button */}
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={toggleTheme}
-            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
-            title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-          >
-            {theme === 'light' ? <Moon size={15} color="var(--brand-orange)" /> : <Sun size={15} color="#f59e0b" />}
-            <span>{theme === 'light' ? 'Dark' : 'Light'}</span>
-          </button>
+          <div className="tooltip-wrapper">
+            <button
+              type="button"
+              className="theme-toggle-btn"
+              onClick={toggleTheme}
+              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+              title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+            >
+              {theme === 'light' ? <Moon size={15} color="var(--brand-orange)" /> : <Sun size={15} color="#f59e0b" />}
+              <span>{theme === 'light' ? 'Dark' : 'Light'}</span>
+            </button>
+            <span className="tooltip-label">{theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}</span>
+          </div>
         </div>
       </div>
     </header>
